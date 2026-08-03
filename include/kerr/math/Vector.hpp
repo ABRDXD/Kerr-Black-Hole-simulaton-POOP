@@ -24,3 +24,5 @@ using Vector4d = Vector4<double>;
 
 } // namespace kerr::math
 
+
+// SIMD-aligned vector dot product
