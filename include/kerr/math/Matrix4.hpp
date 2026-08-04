@@ -32,3 +32,5 @@ using Matrix4d = Matrix4<double>;
 
 } // namespace kerr::math
 
+
+// Determinant and inverse routines
