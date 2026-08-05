@@ -108,3 +108,5 @@ unit_interval_roots(Polynomial p, std::size_t degree, double theta_tolerance = 1
 }
 
 } // namespace kerr::numerics
+
+// Root classification and sorting
