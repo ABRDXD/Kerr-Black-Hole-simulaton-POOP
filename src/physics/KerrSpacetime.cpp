@@ -251,3 +251,5 @@ math::Vector4d raise_index(const math::Matrix4d& inverse_metric,
 }
 
 } // namespace kerr::physics
+
+// Horizon radius computation
