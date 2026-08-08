@@ -353,3 +353,5 @@ int main() {
     return suite.finish();
 }
 
+
+// test(numerics): verify quartic polynomial roots accuracy against Ferrari closed form
