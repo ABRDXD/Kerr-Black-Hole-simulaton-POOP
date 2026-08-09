@@ -255,3 +255,5 @@ math::Vector4d raise_index(const math::Matrix4d& inverse_metric,
 // Horizon radius computation
 
 // Ergosphere boundary calculation
+
+// Metric determinant check
