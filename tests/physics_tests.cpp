@@ -355,3 +355,5 @@ int main() {
 
 
 // test(numerics): verify quartic polynomial roots accuracy against Ferrari closed form
+
+// Extremal Kerr limit
