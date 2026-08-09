@@ -1,3 +1,3 @@
 # Kerr-Black-Hole simulaton
 
-Interactive Kerr black hole relativistic spacetime simulation and geodesic solver.
+Interactive relativistic Kerr black hole simulation engine.
