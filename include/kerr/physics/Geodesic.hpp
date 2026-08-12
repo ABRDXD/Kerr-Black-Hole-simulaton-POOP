@@ -83,3 +83,5 @@ struct TimelikeStateEvaluation final {
                                                           double coordinate_time = 0.0) noexcept;
 
 } // namespace kerr::physics
+
+// Conserved quantity invariant assertions
