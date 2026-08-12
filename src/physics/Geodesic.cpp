@@ -264,3 +264,5 @@ TimelikeStateEvaluation make_timelike_state(const KerrParameters &parameters,
 }
 
 } // namespace kerr::physics
+
+// Carter constant of motion Q
