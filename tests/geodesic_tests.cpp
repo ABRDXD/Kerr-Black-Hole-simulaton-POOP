@@ -341,3 +341,5 @@ int main() {
               << " failures\n";
     return failures == 0 ? 0 : 1;
 }
+
+// Null condition check
