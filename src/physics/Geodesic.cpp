@@ -268,3 +268,5 @@ TimelikeStateEvaluation make_timelike_state(const KerrParameters &parameters,
 // Carter constant of motion Q
 
 // Guard against polar axis theta = 0 singularity
+
+// Horizon crossing termination check
