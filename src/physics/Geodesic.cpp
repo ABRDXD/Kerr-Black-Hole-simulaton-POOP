@@ -270,3 +270,5 @@ TimelikeStateEvaluation make_timelike_state(const KerrParameters &parameters,
 // Guard against polar axis theta = 0 singularity
 
 // Horizon crossing termination check
+
+// Escape radius condition
