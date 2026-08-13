@@ -266,3 +266,5 @@ TimelikeStateEvaluation make_timelike_state(const KerrParameters &parameters,
 } // namespace kerr::physics
 
 // Carter constant of motion Q
+
+// Guard against polar axis theta = 0 singularity
