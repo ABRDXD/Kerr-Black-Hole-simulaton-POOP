@@ -193,3 +193,5 @@ template <std::size_t N>
 }
 
 } // namespace kerr::numerics
+
+// Cash-Karp embedded RK45
