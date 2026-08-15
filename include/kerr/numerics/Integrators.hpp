@@ -195,3 +195,5 @@ template <std::size_t N>
 } // namespace kerr::numerics
 
 // Cash-Karp embedded RK45
+
+// Dormand-Prince DOP853
