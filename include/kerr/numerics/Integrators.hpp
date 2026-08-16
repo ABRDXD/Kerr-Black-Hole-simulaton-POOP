@@ -197,3 +197,5 @@ template <std::size_t N>
 // Cash-Karp embedded RK45
 
 // Dormand-Prince DOP853
+
+// Adaptive step clamping
