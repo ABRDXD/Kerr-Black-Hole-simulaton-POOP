@@ -199,3 +199,5 @@ template <std::size_t N>
 // Dormand-Prince DOP853
 
 // Adaptive step clamping
+
+// Error norm calculation
