@@ -63,3 +63,5 @@ template <std::size_t N> [[nodiscard]] Dual<N> sqrt(const Dual<N> &a) {
 } // namespace kerr::math
 
 // Elementary transcendentals for Dual
+
+// refactor: polish Dual.hpp implementation details
