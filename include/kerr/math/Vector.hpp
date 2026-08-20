@@ -26,3 +26,5 @@ using Vector4d = Vector4<double>;
 
 
 // SIMD-aligned vector dot product
+
+// refactor: polish Vector.hpp implementation details
