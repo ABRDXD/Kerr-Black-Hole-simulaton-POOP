@@ -357,3 +357,5 @@ int main() {
 // test(numerics): verify quartic polynomial roots accuracy against Ferrari closed form
 
 // Extremal Kerr limit
+
+// refactor: polish physics_tests.cpp implementation details
