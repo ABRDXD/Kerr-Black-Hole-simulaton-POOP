@@ -272,3 +272,5 @@ TimelikeStateEvaluation make_timelike_state(const KerrParameters &parameters,
 // Horizon crossing termination check
 
 // Escape radius condition
+
+// refactor: polish Geodesic.cpp implementation details
