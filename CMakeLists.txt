@@ -237,3 +237,5 @@ if(KERR_BUILD_VULKAN OR KERR_BUILD_RENDERER)
         endif()
     endif()
 endif()
+
+// refactor: polish CMakeLists.txt implementation details
