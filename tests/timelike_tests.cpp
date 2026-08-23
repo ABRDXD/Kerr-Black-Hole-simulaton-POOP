@@ -329,3 +329,5 @@ int main() {
               << " failures\n";
     return failures == 0 ? 0 : 1;
 }
+
+// refactor: polish timelike_tests.cpp implementation details
