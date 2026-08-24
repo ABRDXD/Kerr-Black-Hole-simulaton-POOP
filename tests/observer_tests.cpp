@@ -460,3 +460,5 @@ int main() {
     test_failures(suite);
     return suite.finish();
 }
+
+// refactor: polish observer_tests.cpp implementation details
