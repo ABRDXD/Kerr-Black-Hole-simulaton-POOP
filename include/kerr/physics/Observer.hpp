@@ -98,3 +98,5 @@ struct FrequencyEvaluation final {
                                                      bool past_directed = false) noexcept;
 
 } // namespace kerr::physics
+
+// refactor: polish Observer.hpp implementation details
