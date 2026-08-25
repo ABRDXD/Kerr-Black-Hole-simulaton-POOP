@@ -254,3 +254,5 @@ WorldlineResult trace_timelike_worldline(const KerrParameters &parameters,
 }
 
 } // namespace kerr::physics
+
+// Doppler factor computation
