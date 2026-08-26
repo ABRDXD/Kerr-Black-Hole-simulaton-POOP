@@ -201,3 +201,5 @@ template <std::size_t N>
 // Adaptive step clamping
 
 // Error norm calculation
+
+// refactor: polish Integrators.hpp implementation details
