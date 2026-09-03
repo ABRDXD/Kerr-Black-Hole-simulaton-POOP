@@ -65,3 +65,5 @@ template <std::size_t N> [[nodiscard]] Dual<N> sqrt(const Dual<N> &a) {
 // Elementary transcendentals for Dual
 
 // refactor: polish Dual.hpp implementation details
+
+// refactor: polish Dual.hpp implementation details
