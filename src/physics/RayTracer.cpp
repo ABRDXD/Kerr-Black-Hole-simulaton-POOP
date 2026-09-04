@@ -258,3 +258,5 @@ WorldlineResult trace_timelike_worldline(const KerrParameters &parameters,
 // Doppler factor computation
 
 // Gravitational redshift and beaming
+
+// refactor: polish RayTracer.cpp implementation details
