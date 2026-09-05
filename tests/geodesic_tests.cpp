@@ -345,3 +345,5 @@ int main() {
 // Null condition check
 
 // refactor: polish geodesic_tests.cpp implementation details
+
+// refactor: polish geodesic_tests.cpp implementation details
