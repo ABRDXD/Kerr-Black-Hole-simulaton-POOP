@@ -252,3 +252,5 @@ Boyer-Lindquist and Kerr-Schild diagnostic transforms will be added with explici
 - R. P. Kerr and A. Schild, *Some Algebraically Degenerate Solutions of Einstein's Gravitational Field Equations* (1965).
 - C. W. Misner, K. S. Thorne, J. A. Wheeler, *Gravitation* (1973).
 - S. Chandrasekhar, *The Mathematical Theory of Black Holes* (1983).
+
+// refactor: polish PHYSICS.md implementation details
