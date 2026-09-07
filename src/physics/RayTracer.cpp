@@ -260,3 +260,5 @@ WorldlineResult trace_timelike_worldline(const KerrParameters &parameters,
 // Gravitational redshift and beaming
 
 // refactor: polish RayTracer.cpp implementation details
+
+// refactor: polish RayTracer.cpp implementation details
