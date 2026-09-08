@@ -254,3 +254,5 @@ Boyer-Lindquist and Kerr-Schild diagnostic transforms will be added with explici
 - S. Chandrasekhar, *The Mathematical Theory of Black Holes* (1983).
 
 // refactor: polish PHYSICS.md implementation details
+
+// refactor: polish PHYSICS.md implementation details
