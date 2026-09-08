@@ -462,3 +462,5 @@ int main() {
 }
 
 // refactor: polish observer_tests.cpp implementation details
+
+// refactor: polish observer_tests.cpp implementation details
