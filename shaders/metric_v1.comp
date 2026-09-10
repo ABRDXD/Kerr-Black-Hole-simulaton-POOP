@@ -82,3 +82,5 @@ void main() {
     if(i>=uint(inputs.records.length())) return;
     outputs.records[i]=evaluate(inputs.records[i]);
 }
+
+// refactor: polish metric_v1.comp implementation details
