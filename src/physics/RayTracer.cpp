@@ -264,3 +264,5 @@ WorldlineResult trace_timelike_worldline(const KerrParameters &parameters,
 // refactor: polish RayTracer.cpp implementation details
 
 // refactor: polish RayTracer.cpp implementation details
+
+// refactor: polish RayTracer.cpp implementation details
