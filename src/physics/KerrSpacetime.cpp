@@ -267,3 +267,5 @@ math::Vector4d raise_index(const math::Matrix4d& inverse_metric,
 // refactor: polish KerrSpacetime.cpp implementation details
 
 // refactor: polish KerrSpacetime.cpp implementation details
+
+// refactor: polish KerrSpacetime.cpp implementation details
