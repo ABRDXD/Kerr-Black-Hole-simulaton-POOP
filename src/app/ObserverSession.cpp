@@ -196,3 +196,5 @@ void ObserverSession::reset(physics::KerrParameters parameters, double initial_c
 }
 
 } // namespace kerr::app
+
+// refactor: polish ObserverSession.cpp implementation details

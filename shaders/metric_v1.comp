@@ -1,0 +1,88 @@
+#version 460
+
+// Independent implementation of GPU_PHYSICS.md, formula/ABI v1.
+layout(local_size_x=64, local_size_y=1, local_size_z=1) in;
+struct InputRecord { vec4 position_mass; vec4 spin_reserved; uvec4 meta; };
+struct OutputRecord {
+    uvec4 meta;
+    vec4 scalars;
+    float covariant[16];
+    float contravariant[16];
+    float spatial_partials[48];
+};
+layout(std430,set=0,binding=0) readonly buffer Inputs { InputRecord records[]; } inputs;
+layout(std430,set=0,binding=1) writeonly buffer Outputs { OutputRecord records[]; } outputs;
+
+bool finite_value(float x) { return !isnan(x) && !isinf(x); }
+OutputRecord empty_record(uint id, uint status) {
+    OutputRecord o;
+    o.meta=uvec4(1,id,status,0);
+    o.scalars=vec4(0);
+    for(int k=0;k<16;++k) { o.covariant[k]=0; o.contravariant[k]=0; }
+    for(int k=0;k<48;++k) o.spatial_partials[k]=0;
+    return o;
+}
+OutputRecord evaluate(InputRecord v) {
+    OutputRecord o=empty_record(v.meta.y,1);
+    if(v.meta.x!=1) { o.meta.z=3; return o; }
+    if(any(isnan(v.position_mass)) || any(isinf(v.position_mass)) ||
+       any(isnan(v.spin_reserved)) || any(isinf(v.spin_reserved)) ||
+       v.position_mass.w<=0 || abs(v.spin_reserved.x)>v.position_mass.w ||
+       any(notEqual(v.spin_reserved.yzw,vec3(0))) || any(notEqual(v.meta.zw,uvec2(0)))) return o;
+    precise float scale=max(max(abs(v.position_mass.x),abs(v.position_mass.y)),
+                            max(abs(v.position_mass.z),abs(v.spin_reserved.x)));
+    o.meta.z=2;
+    if(scale==0) return o;
+    precise vec3 p=v.position_mass.xyz/scale;
+    precise float a=v.spin_reserved.x/scale;
+    precise float q=dot(p,p)-a*a;
+    precise float d=sqrt(q*q+4*a*a*p.z*p.z);
+    precise float r2=q>=0 ? 0.5*(q+d) : 2*a*a*p.z*p.z/(d-q);
+    if(!(r2>0) || !(d>0)) return o;
+    precise float r=sqrt(r2);
+    precise float b=r2+a*a;
+    precise float c=a*p.z/r2;
+    precise float f=2*(v.position_mass.w/scale)/(r*(1+c*c));
+    precise vec4 l=vec4(1,(r*p.x+a*p.y)/b,(r*p.y-a*p.x)/b,p.z/r);
+    precise vec4 raised=vec4(-1,l.yzw);
+    precise vec3 dr=vec3(r*p.x/d,r*p.y/d,p.z*b/(r*d));
+    o.scalars=vec4(scale*r,f,0,0);
+    for(int row=0;row<4;++row) for(int col=row;col<4;++col) {
+        precise float eta=row==col ? (row==0 ? -1 : 1) : 0;
+        precise float cov=eta+f*l[row]*l[col];
+        precise float inv=eta-f*raised[row]*raised[col];
+        o.covariant[row*4+col]=cov; o.covariant[col*4+row]=cov;
+        o.contravariant[row*4+col]=inv; o.contravariant[col*4+row]=inv;
+    }
+    for(int axis=0;axis<3;++axis) {
+        precise vec3 e=vec3(axis==0?1:0,axis==1?1:0,axis==2?1:0);
+        precise float dc=a*e.z/r2-2*c*dr[axis]/r;
+        precise float df=-f*(dr[axis]/r+2*c*dc/(1+c*c));
+        precise float db=2*r*dr[axis];
+        precise vec4 dl=vec4(0,(p.x*dr[axis]+r*e.x+a*e.y-l.y*db)/b,
+                              (p.y*dr[axis]+r*e.y-a*e.x-l.z*db)/b,
+                              (e.z-l.w*dr[axis])/r);
+        for(int row=0;row<4;++row) for(int col=row;col<4;++col) {
+            precise float partial=-(df*raised[row]*raised[col]+
+                    f*(dl[row]*raised[col]+raised[row]*dl[col]))/scale;
+            o.spatial_partials[axis*16+row*4+col]=partial;
+            o.spatial_partials[axis*16+col*4+row]=partial;
+        }
+    }
+    if(!finite_value(o.scalars.x) || !finite_value(f)) return empty_record(v.meta.y,4);
+    for(int k=0;k<16;++k)
+        if(!finite_value(o.covariant[k]) || !finite_value(o.contravariant[k])) return empty_record(v.meta.y,4);
+    for(int k=0;k<48;++k)
+        if(!finite_value(o.spatial_partials[k])) return empty_record(v.meta.y,4);
+    o.meta.z=0;
+    return o;
+}
+void main() {
+    uint i=gl_GlobalInvocationID.x;
+    if(i>=uint(inputs.records.length())) return;
+    outputs.records[i]=evaluate(inputs.records[i]);
+}
+
+// refactor: polish metric_v1.comp implementation details
+
+// refactor: polish metric_v1.comp implementation details

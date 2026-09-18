@@ -203,3 +203,5 @@ template <std::size_t N>
 // Error norm calculation
 
 // refactor: polish Integrators.hpp implementation details
+
+// refactor: polish Integrators.hpp implementation details
