@@ -67,3 +67,5 @@ template <std::size_t N> [[nodiscard]] Dual<N> sqrt(const Dual<N> &a) {
 // refactor: polish Dual.hpp implementation details
 
 // refactor: polish Dual.hpp implementation details
+
+// refactor: polish Dual.hpp implementation details

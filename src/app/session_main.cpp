@@ -141,3 +141,5 @@ int main(int argc, char **argv) {
         return 1;
     }
 }
+
+// refactor: polish session_main.cpp implementation details

@@ -100,3 +100,5 @@ struct FrequencyEvaluation final {
 } // namespace kerr::physics
 
 // refactor: polish Observer.hpp implementation details
+
+// refactor: polish Observer.hpp implementation details
