@@ -22,3 +22,5 @@
     "wgsl_reflect": "^1.5.0"
   }
 }
+
+// refactor: polish package.json implementation details
