@@ -294,3 +294,5 @@ TimelikeStateEvaluation make_timelike_state(const KerrParameters &parameters,
 // refactor: polish Geodesic.cpp implementation details
 
 // refactor: polish Geodesic.cpp implementation details
+
+// refactor: polish Geodesic.cpp implementation details
