@@ -67,3 +67,5 @@ if ($Validation) {
 Write-Output 'Pinned dependencies ready. Run .\build.ps1 -Configuration Release -Vulkan (or -Window for presentation)'
 
 // refactor: polish bootstrap-vulkan.ps1 implementation details
+
+// refactor: polish bootstrap-vulkan.ps1 implementation details
