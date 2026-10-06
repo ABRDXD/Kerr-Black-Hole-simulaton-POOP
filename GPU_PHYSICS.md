@@ -81,3 +81,5 @@ accuracy guarantees. Near-ring resolution and broader exponent ranges require
 additional studies before production use.
 
 // refactor: polish GPU_PHYSICS.md implementation details
+
+// refactor: polish GPU_PHYSICS.md implementation details
