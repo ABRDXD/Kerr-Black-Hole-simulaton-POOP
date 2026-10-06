@@ -653,3 +653,5 @@ bool WindowRenderer::validation_enabled() const {
 } // namespace kerr::renderer
 
 // refactor: polish WindowRenderer.cpp implementation details
+
+// refactor: polish WindowRenderer.cpp implementation details
