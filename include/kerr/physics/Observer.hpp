@@ -102,3 +102,7 @@ struct FrequencyEvaluation final {
 // refactor: polish Observer.hpp implementation details
 
 // refactor: polish Observer.hpp implementation details
+
+// refactor: polish Observer.hpp implementation details
+
+// refactor: polish Observer.hpp implementation details

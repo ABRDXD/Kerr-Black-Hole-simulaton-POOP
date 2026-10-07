@@ -1,0 +1,157 @@
+#showcaseHeader {
+  position: fixed;
+  top: 28px;
+  left: 30px;
+  max-width: min(510px, calc(100vw - 350px));
+  color: #e9e8e3;
+  pointer-events: none;
+  text-shadow: 0 2px 18px #000;
+}
+#fps { top: auto; left: auto; right: 16px; bottom: 32px; }
+#movieExport {
+  width: min(640px, calc(100vw - 40px)); max-height: calc(100vh - 40px);
+  box-sizing: border-box; overflow: auto; padding: 26px; border-radius: 14px;
+  background: #0c0f17; color: #e9e8e3; border: 1px solid #d4ac7666;
+  box-shadow: 0 20px 100px #000b; font: 14px system-ui, sans-serif;
+}
+#movieExport::backdrop { background: #000b; }
+#movieExport h2 { margin: 0 0 12px; font-size: 22px; font-weight: 500; }
+#movieExport p { color: #b3bac9; line-height: 1.55; font-size: 13px; overflow-wrap: anywhere; }
+#movieSettings { border: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+#movieSettings label { display: flex; flex-direction: column; gap: 6px; }
+#movieExport :is(select, input, button) {
+  min-width: 0; padding: 10px; color: #e9e8e3; background: #171e2b;
+  border: 1px solid #ffffff30; border-radius: 6px; font: inherit;
+}
+#movieExport :disabled { opacity: .55; }
+#movieExport :is(select, input, button):focus-visible { outline: 2px solid #d4ac76; outline-offset: 2px; }
+#movieProgress { width: 100%; accent-color: #d4ac76; }
+.movie-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+#movieExport #movieStart { color: #efcc99; border-color: #d4ac7666; }
+@media (max-width: 520px) { #movieSettings { grid-template-columns: 1fr; } }
+#capturePreview {
+  width: min(1040px, calc(100vw - 64px));
+  max-height: calc(100vh - 64px);
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 20px;
+  color: #e9e8e3;
+  background: #0c0f17;
+  border: 1px solid #d4ac764d;
+  border-radius: 14px;
+  box-shadow: 0 20px 100px #000b;
+}
+#capturePreview::backdrop { background: #000d; }
+#capturePreview h2 { margin: 0 0 14px; font-size: 17px; font-weight: 500; }
+#capturePreview img { max-width: 100%; max-height: 66vh; object-fit: contain; margin: 0 auto; }
+#capturePreview img:not([hidden]) { display: block; }
+#capturePreview p { color: #a8acb8; font-size: 12px; line-height: 1.5; }
+.capture-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.capture-actions :is(a, button) {
+  border: 1px solid #ffffff2c;
+  border-radius: 6px;
+  background: #ffffff0a;
+  color: #e3e5eb;
+  padding: 9px 14px;
+  font: 12px system-ui, sans-serif;
+  text-decoration: none;
+  cursor: pointer;
+}
+.capture-actions a { color: #efcc99; background: #d9a76517; border-color: #d9a76545; }
+.capture-actions :is(a, button):focus-visible { outline: 2px solid #d4ac76; outline-offset: 3px; }
+.observatory-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 9px;
+  letter-spacing: 0.24em;
+  color: #c6aa83;
+}
+.orbit-mark {
+  display: inline-block;
+  width: 18px;
+  height: 9px;
+  border: 1px solid #e7b773;
+  border-radius: 50%;
+  transform: rotate(-28deg);
+  box-shadow: 0 0 12px #e7b77344;
+}
+#showcaseHeader h1 {
+  margin: 10px 0 5px;
+  font-size: 38px;
+  font-weight: 500;
+  letter-spacing: -0.065em;
+  line-height: 1.1;
+}
+#showcaseHeader h1 span { color: #d4ac76; font-weight: 300; }
+#sceneCaption { margin: 10px 0; font-size: 12px; color: #bdc0c8; line-height: 1.5; }
+.showcase-meta { font-size: 8px; letter-spacing: 0.11em; color: #868995; }
+.showcase-meta span { padding: 0 7px; color: #d4ac76; }
+#sceneDock {
+  position: fixed;
+  bottom: 47px;
+  left: 24px;
+  max-width: calc(100vw - 346px);
+  padding: 10px;
+  background: rgba(10, 12, 18, 0.82);
+  border: 1px solid #ffffff1c;
+  border-radius: 13px;
+  color: #c6c9d2;
+  box-shadow: 0 8px 32px #0006;
+  z-index: 3;
+}
+body:has(#chirpBar.show) #sceneDock { bottom: 112px; }
+body:has(#chirpBar.show) #fps { bottom: 88px; }
+.scene-buttons, .showcase-actions { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+#sceneDock button, #restoreInterface {
+  font: 11px system-ui, sans-serif;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #b9bdc9;
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+#sceneDock button:hover, #restoreInterface:hover { color: #fff; background: #ffffff0d; }
+#sceneDock .scene-buttons button { padding: 10px 16px; color: #d7d9df; }
+#sceneDock .scene-buttons button[aria-pressed="true"] {
+  color: #efcc99;
+  border-color: #d9a76545;
+  background: #d9a76517;
+}
+#sceneDock button:focus-visible, #restoreInterface:focus-visible { outline: 2px solid #d4ac76; outline-offset: 2px; }
+.showcase-actions { border-top: 1px solid #ffffff0d; padding-top: 7px; margin-top: 7px; gap: 2px; }
+.interaction-hint { font-size: 9px; color: #878b98; padding: 0 8px 0 3px; }
+#restoreInterface {
+  position: fixed;
+  right: 18px;
+  top: 18px;
+  z-index: 30;
+  background: #11141ccc;
+  border-color: #ffffff26;
+}
+.cinema-view :is(#showcaseHeader, #sceneDock, #panel, #panelToggle, #fps, #footer, #chirpBar, #about, #learn) {
+  display: none !important;
+}
+@media (max-width: 1000px) {
+  #sceneDock { max-width: calc(100vw - 340px); left: 16px; }
+  #sceneDock .scene-buttons button { padding: 8px 10px; }
+  .interaction-hint { display: none; }
+  #showcaseHeader { left: 20px; }
+}
+@media (max-width: 650px) {
+  #showcaseHeader { top: 16px; left: 16px; max-width: calc(100vw - 54px); }
+  #showcaseHeader h1 { font-size: 29px; }
+  #sceneCaption { max-width: 230px; }
+  .showcase-meta { display: none; }
+  #sceneDock { left: 10px; right: 10px; bottom: 44px; max-width: none; padding: 7px; }
+  #sceneDock .scene-buttons { gap: 2px; }
+  #sceneDock .scene-buttons button { padding: 8px; flex: 1; font-size: 10px; }
+  #sceneDock .showcase-actions { justify-content: flex-end; }
+  #panel { top: 12px; max-height: calc(100vh - 160px); z-index: 7; }
+  #panelToggle { z-index: 8; }
+  #footer { font-size: 9px; padding-right: 70px; }
+  #fps { right: 10px; bottom: 9px; font-size: 10px; padding: 3px 6px; }
+  #capturePreview { width: calc(100vw - 24px); max-height: calc(100vh - 24px); padding: 13px; }
+}
