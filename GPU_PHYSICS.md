@@ -79,3 +79,7 @@ All numeric fields must be finite; failed results must be entirely zero. These
 are pointwise geometry bounds on the tested fixtures, not trajectory or image
 accuracy guarantees. Near-ring resolution and broader exponent ranges require
 additional studies before production use.
+
+// refactor: polish GPU_PHYSICS.md implementation details
+
+// refactor: polish GPU_PHYSICS.md implementation details

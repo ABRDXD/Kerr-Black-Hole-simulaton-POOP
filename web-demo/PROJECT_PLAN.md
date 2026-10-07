@@ -1,0 +1,560 @@
+# Project Development Plan
+
+This document is both the technical specification and the phase-by-phase task tracker for the **Kerr Black Hole Ray Tracer** — a browser-based, real-time, interactive black hole renderer that integrates **actual null geodesics of the Kerr metric** in a WebGL2 fragment shader. Spin slider from a = 0 (Schwarzschild) to near-extremal. Free orbit camera, relativistic accretion disk, procedural starfield, polished UI, deployed as a static site anyone can open in a browser.
+
+Portfolio thesis: *physics → numerics → validation → rendering*, in that order. The README leads with the equations being integrated and the plots proving the integrator works, not just pretty pictures.
+
+Part I is the specification; Part II is the task list. Tasks reference specification sections (e.g. *§2.2*). Phases 1–11 each end at a **review checkpoint**: work pauses for explicit confirmation before the next phase begins. Phases 0–7 constitute the core release; Phases 8–11 are the extended features (§9), committed scope sequenced after the core release rather than optional stretch goals.
+
+> **Status (2026-10-07): Phases 0–20 complete; Phases 21–22 planned.** Phase 20
+> cut the benchmark frame time by 80% (docs/optimization-run.md). Phase 21 closes
+> the renderer-consistency and test-coverage gaps that work exposed, then cleans up.
+> Phase 22 adds head-coupled perspective (§11).
+>
+> *Core-release certification (2026-07-13):* all 12 phases complete; all 9
+> browser e2e suites pass against the final build and the float64 validation
+> suite passes 12/12 checks. GitHub Pages is enabled (owner action done) and
+> the WebGPU HQ path has been exercised end-to-end in-container via the
+> SwiftShader software adapter: modal flow, PNG download, and numerical
+> pixel parity between the GLSL and WGSL ports (8×8 block-mean difference
+> 3.56/255 at matched sampling — see e2e/reports/phase11.md). Phase 12 added
+> the owner-requested educational/UX + animation layer (mass scale-invariance
+> explained, free-fall stop, coordinate grid, click-to-learn popups + a full
+> notation glossary, collapsible sidebar, cinematic idle auto-orbit, visible
+> Keplerian disk shear, half-size flux-conserving stars) — all 9 browser e2e
+> suites re-certified PASS; see e2e/reports/phase12.md.
+
+---
+
+# Part I: Technical Specification
+
+## 1. Headline architecture decision
+
+**One integrator: full Kerr geodesics in Kerr–Schild (Cartesian) coordinates. Schwarzschild is the a = 0 special case for free.**
+
+Rationale, worth stating in the README:
+
+- The Schwarzschild plane-reduction trick (Binet equation) does not generalize to Kerr — frame dragging makes geodesics genuinely 3D. Since Kerr is in scope, build the general integrator once and get Schwarzschild as a slider position rather than a separate code path.
+- **Kerr–Schild over Boyer–Lindquist.** BL coordinates are singular at the horizon and on the polar axis, and the first-order (E, L_z, Carter Q) formulation requires tracking turning-point signs of √R(r) and √Θ(θ) — a classic source of visual artifacts. Kerr–Schild coordinates are horizon-penetrating, Cartesian, axis-regular, and rays that cross the horizon simply keep integrating until a capture condition triggers. Fewer branches, fewer bugs, cleaner shader.
+- Hamiltonian formulation: integrate `H = ½ g^{μν}(x) p_μ p_ν` with Hamilton's equations. No Christoffel symbols needed; conserved H ≈ 0 is a built-in per-ray error monitor.
+
+## 2. Physics specification
+
+### 2.1 Metric (Kerr–Schild form, geometrized units G = c = 1, M = 1 base scale)
+
+```
+g_μν = η_μν + f l_μ l_ν          g^{μν} = η^{μν} − f l^μ l^ν   (l is null, so the inverse is exact)
+f = 2 M r³ / (r⁴ + a² z²)
+l_μ = ( 1,  (r x + a y)/(r² + a²),  (r y − a x)/(r² + a²),  z/r )
+```
+
+where r is the Kerr–Schild radial coordinate, defined by the largest root of
+
+```
+r⁴ − r² (ρ² − a²) − a² z² = 0,   ρ² = x² + y² + z²
+⇒ r² = ½ (ρ² − a²) + √( ¼ (ρ² − a²)² + a² z² )
+```
+
+Signature (−,+,+,+). Note M is scale-free: the mass "slider" is implemented as a global length rescale, which is exactly correct physics — say so in the README.
+
+### 2.2 Equations of motion
+
+Hamilton's equations for the null geodesic:
+
+```
+dx^μ/dλ = ∂H/∂p_μ = g^{μν} p_ν
+dp_μ/dλ = −∂H/∂x^μ = −½ ∂_μ g^{αβ} p_α p_β
+```
+
+Two implementation options for `∂_μ g^{αβ}` — do **(a)** first:
+
+- **(a) Finite-difference gradient of H.** Evaluate H at x ± ε per spatial axis (ε ≈ 1e-4 · r). 6 extra metric evaluations per RHS call, but ~30 lines of shader code and near-impossible to get wrong. Ship this.
+- **(b) Analytic derivatives of f and l_μ.** ~2–3× faster. An optimization for the end of the day *if* profiling says you need it; derive on paper and diff against (a) numerically before trusting it.
+
+Integrator: RK4, adaptive step `dλ ∝ min(r − r_horizon-ish, r)/|dr/dλ|`-style heuristic — small steps near the hole, large steps far away. Clamp to [dλ_min, dλ_max], hard cap ~400–600 steps/ray, exposed as a "quality" slider.
+
+Initial conditions per pixel: camera at rest at radius r_cam; build the ray direction from the pixel through a standard pinhole camera basis; set p_i from the direction and solve the null condition `g^{μν} p_μ p_ν = 0` for p_t (quadratic; take the future-pointing root). Normalize so E ≡ −p_t = 1.
+
+### 2.3 Termination conditions
+
+- **Capture:** r < r_+ = M + √(M² − a²) (outer horizon), with a small buffer (e.g. r < 1.02 r_+) → pixel is shadow black (before disk/bloom).
+- **Escape:** r > r_esc (e.g. 30 · r_cam or 200 M) → map the final momentum direction to the starfield.
+- **Budget exceeded:** color by a debug tint in debug mode; in normal mode treat as captured (these rays are photon-shell strugglers).
+
+### 2.4 Conserved quantities (free diagnostics + needed for the disk)
+
+Kerr–Schild has the same Killing vectors ∂_t and ∂_φ, so along every ray:
+
+```
+E  = −p_t                    (conserved)
+L_z = x p_y − y p_x          (conserved, Cartesian form of p_φ)
+H  ≈ 0                       (null condition; drift = integration error)
+```
+
+Debug view: render |H| drift as false color. This is the single best shader-debugging tool in the project — build it in Phase 3, not at the end.
+
+### 2.5 Accretion disk (equatorial, geometrically thin)
+
+Disk occupies z = 0, r ∈ [r_ISCO(a), r_out] (r_out ≈ 12–16 M, slider). Detect plane crossing by sign change of z between steps; on detection, bisect the step 2–3 times for a clean hit point (prevents banding at high inclination).
+
+Prograde circular orbit kinematics at radius r (BL formulas, valid on the equator where BL and KS r coincide):
+
+```
+Ω = √M / (r^{3/2} + a √M)
+r_ISCO = M [ 3 + Z₂ − √((3 − Z₁)(3 + Z₁ + 2 Z₂)) ]        (prograde)
+  Z₁ = 1 + (1 − a²/M²)^{1/3} [ (1 + a/M)^{1/3} + (1 − a/M)^{1/3} ]
+  Z₂ = √( 3 a²/M² + Z₁² )
+```
+
+**Redshift factor** — the payoff of carrying conserved quantities. For an observer at rest at infinity and an emitter on the circular orbit:
+
+```
+g = E_obs / E_em = 1 / [ u^t (1 − Ω λ) ],    λ = L_z / E   (per ray, both conserved)
+u^t = (1 + a √M / r^{3/2}) / √(1 − 3M/r + 2 a √M / r^{3/2})   (prograde equatorial circular orbit)
+```
+
+> Note: the original blueprint omitted the numerator (1 + a√M/r^{3/2}) in u^t.
+> Corrected in Phase 2 by direct normalization of u = u^t(∂_t + Ω ∂_φ) against
+> the BL metric — see docs/derivations.md §6 for the derivation and numerical check.
+
+This packages gravitational redshift, orbital Doppler, and frame dragging in one exact expression. **Derive/verify this before implementing (Phase 2) — sign and convention errors here are the most likely failure mode, and checking it against the project owner's GR knowledge is the review layer.**
+
+Shading on hit:
+
+- Intensity ∝ g⁴ (bolometric relativistic beaming) × radial emissivity profile (e.g. ∝ r^{−2} or the Novikov–Thorne-ish (1 − √(r_ISCO/r))/r³ if feeling fancy)
+- Color: blackbody ramp lookup with temperature scaled by g (approaching side blue-white, receding side deep red — the iconic asymmetry)
+- Texture: 2–3 octaves of value noise in (log r, φ − Ω(r) t) coordinates so the pattern differentially rotates; gives the disk life for free
+- Semi-transparent accumulation: on a hit, deposit color weighted by an opacity < 1 and **continue integrating** — this produces the lensed image of the disk wrapped above/below the shadow and the multiple-image rings near the photon shell
+
+### 2.6 Starfield (procedural, zero assets)
+
+Hash-based random stars on the celestial sphere: quantize the escape direction into ~10⁵–10⁶ cells (cube-map-style projection of the direction vector to avoid polar clustering), 3D hash per cell decides star presence (~2–5%), sub-cell jitter for position, power-law brightness distribution, color from a small temperature ramp (blue → white → orange → red), brightness rendered as a tight smoothstep falloff around the star center so stars stay sub-pixel-crisp. Optional: faint procedural Milky Way band (soft noise stripe along a tilted great circle). All ~40 lines of GLSL. Gravitational lensing of the field — including star streaks into the Einstein ring and multiple imaging near the photon shell — comes entirely for free from the ray tracer.
+
+## 3. Tech stack
+
+- **WebGL2 + raw GLSL fragment shader** doing all physics; one fullscreen triangle. No Three.js — the boilerplate is ~150 lines and "no engine" is part of the flex. `highp float` everywhere (mandatory — mediump silently destroys the integration on mobile GPUs).
+- **Vite + vanilla TypeScript.** Shaders as `?raw` imports or `.glsl` files with a tiny plugin. No framework.
+- Render at a scalable internal resolution (0.5×/0.75×/1× device pixels) into a float texture, then a cheap two-pass separable Gaussian bloom + tonemap (ACES-ish) composite pass. Bloom is ~60 lines and does enormous aesthetic work on the disk.
+- **Deploy: GitHub Pages via Actions on push** (`vite build` → static files). The repo link and the live demo link go at the top of the README. Set this up in Phase 1, not at the end — deploys stay one-command all day.
+
+## 4. Interaction & UI spec
+
+### Camera
+
+- Left-drag: orbit around the hole (azimuth/elevation, elevation clamped to ±89°)
+- Scroll / pinch: zoom, clamped to r ∈ [2.2 M, 60 M] — allowing inside the photon shell (r < ~3M) is fine in KS coordinates, but keep outside the horizon buffer
+- Optional inertia with exponential damping; double-click to reset
+- A "free-fall" button that releases the camera onto a timelike geodesic (integrated on the CPU per frame) — specified in §9.1, built in Phase 8
+
+### Control panel (custom, not lil-gui — the design is part of the showcase)
+
+Dark theme; right-side floating glass panel (backdrop-filter blur, 1px light border, ~13px Inter/system font, tabular-lining numerals for readouts); collapsible sections; every slider shows its live value in physics units (e.g. `a = 0.94 M`, `r_in = r_ISCO = 2.04 M`).
+
+- **Black hole:** spin a/M ∈ [0, 0.998] (Thorne limit — cite it, it's a nice touch); mass as scene-scale
+- **Disk:** on/off; outer radius; inner radius display locked to r_ISCO(a) and updating live as spin changes (great physics-made-visible moment); emissivity/exposure; beaming on/off toggle (dramatic before/after)
+- **Quality:** max steps slider; resolution scale; bloom strength
+- **Overlays:** ergosphere surface (ρ_E: r = M + √(M² − a² cos²θ), faint wireframe/translucent shell); photon-shell radii markers; horizon readout r_+ ; debug view dropdown (none / step count / |H| drift / final r)
+- **Presets:** `Schwarzschild (a=0)` · `Interstellar-ish (a=0.6, thin bright disk)` · `Near-extremal (a=0.998)` — one click each, they make the demo instantly legible to non-experts
+- FPS counter (top corner, subtle) and a screenshot button (canvas → PNG download)
+
+### Layout
+
+Full-bleed canvas; panel top-right; a one-line footer ("Real-time integration of null geodesics in the Kerr metric — Kerr–Schild coordinates, RK4 — *About*") where *About* opens a small modal with the core equations and a link to the repo. The modal is your elevator pitch embedded in the artifact itself.
+
+## 5. Validation suite (`validation/`, Python + matplotlib)
+
+Mirror the integrator in ~150 lines of NumPy (same Hamiltonian, same RK4) and produce four plots for the README:
+
+1. **Convergence order:** fixed-step error vs dλ for a strong-field flyby, log–log, against a tiny-step reference. Slope 4 line overlaid. One plot, thousand words.
+2. **Schwarzschild critical impact parameter:** bisection on capture/escape at a = 0 → b_crit → 3√3 M ≈ 5.196 M.
+3. **Kerr photon shell:** at a = 0.9, equatorial prograde/retrograde photon orbit radii vs the analytic `r_ph = 2M(1 + cos(⅔ arccos(∓a/M)))`; and/or the shadow's asymmetric edge vs analytic critical impact parameters.
+4. **Conservation drift:** E, L_z, and H along a 500-step strong-field ray (should sit at machine-noise level for E, L_z; small bounded drift for H).
+5. In-browser cross-check: measure the rendered shadow's angular size at a known camera distance vs the analytic prediction; one sentence + screenshot in the README.
+
+Run this at Phase 4, *before* building the disk — physics bugs are much easier to isolate while the shader is still just shadow-and-stars.
+
+## 6. Implementation working notes
+
+- One commit per phase (at minimum) so shader breakage is bisectable.
+- **Derive before implementing:** write out in `docs/derivations.md` the null-condition solve for p_t, the FD-Hamiltonian gradient scheme, and the redshift factor g — reviewed and signed off before any GLSL is written. This is the highest-leverage review point in the whole project.
+- Build the **debug false-color views in Phase 3, before the first "why is the screen black" moment**, because that moment is otherwise guaranteed to cost an hour.
+- Known pitfalls, stated upfront:
+  - `mediump` precision (force `precision highp float;` and test on an integrated GPU early)
+  - r-coordinate root selection near z = 0 and small ρ (guard the sqrt arguments)
+  - step size too large near the photon shell → banded/noisy ring (adaptive dλ, quality slider)
+  - plane-crossing tests that miss the disk when a step straddles z = 0 at high curvature (sign-change check + bisection)
+  - future-pointing root selection in the p_t quadratic (wrong root = time-reversed rays = subtle nonsense)
+  - loop unrolling / uniform-controlled loop bounds in GLSL (some drivers hate dynamic `break` patterns — use a fixed max with an early-out flag)
+- Keep the fragment shader in one file with clearly banner-commented sections (metric / integrator / disk / starfield / shading); reviewers will read this file.
+
+## 7. README skeleton (write it last, structure it now)
+
+1. Hero GIF + live demo link
+2. **The physics:** the KS metric, the Hamiltonian, why KS over BL (3 sentences), what's exact (everything rendered) — a deliberate contrast with typical "black hole shaders"
+3. **The numerics:** RK4, adaptive stepping, FD gradients, conserved-quantity monitoring
+4. **Validation:** the four plots, each with one sentence
+5. **Rendering:** disk model (Ω, g, g⁴, blackbody), starfield, bloom
+6. Controls table, build instructions, references (MTW/Chandrasekhar for geodesics; Bardeen–Press–Teukolsky 1972 for ISCO/photon orbits; James et al. 2015 *Gravitational lensing by spinning black holes in astrophysics, and in the movie Interstellar* — citing the DNGR paper signals you know the lineage of the technique)
+
+## 8. Scoping
+
+Honest scoping note: Kerr + disk + polish on a tight schedule is aggressive but achievable *because* of the KS/Hamiltonian/FD-gradient choices above, which minimize derivation and debugging surface.
+
+**If behind schedule on the core release (Phases 0–7), cut in this order:** ergosphere overlay → bloom → transparent disk (make it opaque, single image) → adaptive stepping (fixed dλ with higher step count). **Never cut:** validation plots, debug views, the spin slider, README derivations. The extended features (§9, Phases 8–11) are committed scope but sequenced entirely after the core release, so schedule pressure defers them rather than cutting core quality.
+
+## 9. Extended features specification (Phases 8–11)
+
+### 9.1 Camera dynamics: tetrads and free-fall (Phase 8)
+
+The static-camera initial conditions (§2.2) solve the p_t quadratic for a camera at rest. A moving camera requires initializing rays in the camera's **local orthonormal frame**, which also delivers relativistic aberration exactly:
+
+- **Tetrad construction.** At camera position x with 4-velocity u^μ, set e_(0) = u and Gram–Schmidt-orthonormalize three coordinate-frame direction vectors against it under the full metric g, yielding an orthonormal tetrad {e_(0), e_(1), e_(2), e_(3)} with g(e_(A), e_(B)) = η_(AB). Computed on the CPU in TypeScript (a 4×4 Gram–Schmidt per frame is negligible) and passed as uniforms.
+- **Ray initialization.** For pixel direction n̂ (unit 3-vector in the camera frame), p^μ = e_(0)^μ + n^i e_(i)^μ. This is exactly null by construction and normalizes the locally measured photon energy to E_loc = −p_μ u^μ = 1. It replaces the p_t quadratic; the quadratic path is retained as a cross-check for the static case (both must agree to numerical precision).
+- **Free-fall mode.** Release from rest: u^i = 0, u^t = 1/√(−g_tt), well-defined only where g_tt < 0, i.e. **outside the ergosphere** — the release button is disabled inside it (a physics-made-visible touch worth a UI tooltip). The camera worldline is then integrated per frame on the CPU with the same Hamiltonian RK4 as the shader (timelike branch: H = ½ g^{μν} p_μ p_ν = −½ for unit mass), in a TypeScript mirror of the shader RHS. Frame dragging induces azimuthal drift from a pure-radial release automatically. Terminate the plunge (and reset) at r ≤ 1.05 r_+.
+- **Validation.** At a = 0, compare the integrated plunge r(τ) from rest at r_0 against the analytic Schwarzschild cycloid solution.
+
+### 9.2 Redshifted starfield (Phase 8)
+
+With rays initialized to E_loc = 1 (§9.1), the conserved E = −p_t of the backward-traced ray directly encodes the shift for sources at infinity: a photon emitted by a distant static star with energy-at-infinity E is received with ν_obs/ν_em = E_loc/E = 1/E ≡ g_★.
+
+- Apply per escaped pixel: star temperature T_obs = g_★ T_em (blackbody spectral shape is preserved under uniform frequency scaling), bolometric brightness × g_★⁴ (from the invariance of I_ν/ν³).
+- Limits as sanity checks: distant static camera → g_★ → 1 (no shift); static camera at finite r → g_★ = 1/√(−g_tt) > 1 (gravitational blueshift of the sky, correct); infalling camera → forward-sky blueshift and aberration concentration, rear-sky redshift.
+
+### 9.3 Disk extensions: retrograde flow and inclination (Phase 9)
+
+**Retrograde disk.** Parameterize orbit sense by s = ±1 (s = +1 prograde, s = −1 retrograde); the §2.5 formulas generalize to
+
+```
+Ω      = s √M / (r^{3/2} + s a √M)
+u^t    = (1 + s a √M / r^{3/2}) / √(1 − 3M/r + 2 s a √M / r^{3/2})
+r_ISCO = M [ 3 + Z₂ − s √((3 − Z₁)(3 + Z₁ + 2 Z₂)) ]
+```
+
+with Z₁, Z₂ as in §2.5. The redshift expression g = 1/[u^t (1 − Ω λ)] is unchanged. Retrograde ISCO is larger (r_ISCO → 9M as a → M), so the retrograde disk visibly recedes from the shadow — state this in the UI/docs.
+
+**Disk inclination.** Tilt the disk plane by angle i about a chosen axis: disk normal n̂(i), plane-crossing detection by sign change of x·n̂ with the same bisection refinement. **Honesty constraint:** in Kerr, circular geodesic orbits exist off the equatorial plane only trivially — a tilted Keplerian disk is not a self-consistent equilibrium for a ≠ 0 (Lense–Thirring precession; cf. Bardeen–Petterson alignment). Implementation: exact at a = 0 (spherical symmetry makes any plane equatorial); for a ≠ 0 carry the equatorial kinematic formulas over to the tilted plane and label the mode "kinematic approximation" in the UI and docs. The renderer's geodesics (light propagation) remain exact in all cases — only the emitter's orbital model is approximate.
+
+**Validation.** Retrograde r_ISCO and photon-orbit radii vs the analytic s = −1 expressions (the photon-shell plot of §5.3 already contains the retrograde branch); visual check that the beaming asymmetry mirrors under s → −s at fixed camera.
+
+### 9.4 Weak-field multi-mass mode (Phase 10)
+
+A separate, clearly-labeled **linearized-gravity** mode: N draggable point masses with superposed weak-field metrics,
+
+```
+g_00 = −(1 + 2Φ),   g_ij = (1 − 2Φ) δ_ij,   g_0i = 0
+Φ(x) = − Σ_k M_k / |x − x_k|        (|Φ| ≪ 1 required for validity)
+```
+
+- Same Hamiltonian machinery and RK4 integrator; only the metric evaluation function is swapped (compile-time shader variant, not a runtime branch in the hot loop).
+- Superposition is **only** valid at linear order — the UI must display a validity indicator (e.g. max |Φ| encountered along rays, warning above ~0.1) and the mode is labeled "linearized approximation" on the panel, per the honesty framing of the whole project.
+- No horizons exist in this metric (Φ diverges at each point mass); terminate rays instead at a capture radius r_k < 2 M_k per mass (the would-be Schwarzschild radius, where linearization has long since broken down).
+- UI: mode switch, drag masses in the camera plane, per-mass M_k sliders, add/remove up to a fixed N_max (uniform array bound).
+- **Validation.** Single mass: numerical deflection angle vs the standard weak-field result α = 4M/b on a log–log plot over b ∈ [10, 10³] M; two masses: deflection additivity in the far field.
+
+### 9.5 WebGPU progressive renderer (Phase 11)
+
+A WGSL compute-shader port of the same integrator for high-quality offline-style stills, with the WebGL2 path retained as the universal fallback:
+
+- Feature-detect `navigator.gpu`; the WebGL2 real-time path remains the default renderer and the fallback everywhere WebGPU is unavailable.
+- Progressive accumulation: per-frame sub-pixel jitter (hash-based sequence seeded by a frame counter — deterministic, no `Math.random` in the sample loop), accumulated into a storage buffer; accumulation resets on any camera/parameter change; sample count displayed live.
+- Precision note: WebGPU guarantees only f32 (no f64 in WGSL core) — same effective precision as `highp` WebGL2, so the port changes throughput and quality-per-second, not accuracy. Order the integration's additive terms to minimize cancellation where cheap to do so.
+- Divergence risk between GLSL and WGSL copies of the physics is managed by (i) keeping both ports structurally line-parallel with shared banner sections and (ii) a **parity test**: identical camera/parameters rendered on both backends, per-pixel difference imaged and bounded; recorded in the test report.
+- High-quality screenshot mode: render at full device resolution to a target sample count, then PNG download.
+
+## 10. Merger mode specification (Phases 13–18)
+
+Binary black hole mergers modeled on **real LIGO/Virgo detections** (GWTC catalog parameters), culminating in a cinematic animation with the gravitational-wave chirp synthesized and played from the same model. Approved design decisions (owner, 2026-07-19): slow-motion visuals with the chirp at true rate aligned to complete at the visual merger (temporal-aliasing rationale: orbital frequencies reach ~100+ Hz near merger, unrepresentable at 60 fps); embedded curated catalog with DOIs rather than runtime API fetch; Phase 18 go/no-go deferred until after Phase 17; initial six events (adding more later is a one-JSON-entry change).
+
+### 10.1 Honesty ladder
+
+| Regime | Model | Status |
+|---|---|---|
+| Inspiral (d ≳ 10 M) | Superposed **boosted Kerr–Schild** metrics on PN trajectories | Controlled approximation, error O(M₁M₂/d) |
+| Late plunge / merger | C¹ blend of two-hole metric into remnant | **Schematic** — labeled; NR is the only honest tool |
+| Ringdown | Exact Kerr remnant with *published* M_f, a_f; QNM from Berti–Cardoso–Will fits (audio) | Exact geometry; settling not rendered as metric dynamics |
+
+### 10.2 Metric: superposed KS with exact Sherman–Morrison inverse
+
+g = η + f₁ l⁽¹⁾l⁽¹⁾ + f₂ l⁽²⁾l⁽²⁾, each term a boosted-KS hole at its instantaneous orbital position/velocity (instantaneous boost; acceleration neglected, labeled). Exact closed-form inverse via two successive rank-1 Sherman–Morrison updates; denominator 1 − f₁f₂(l⁽¹⁾·l⁽²⁾)² guarded (vanishes only deep in the two-horizon overlap, inside the capture zone). Single-hole limit M₂ → 0 must reduce to the existing exact Kerr inverse to machine precision — the anchor validation. Shader: `#define BINARY` variant; integrator/termination untouched. **Transport caveat:** metric now time-dependent ⇒ p_t not exactly conserved; Phase-1 rendering uses the frozen-metric (per-frame snapshot) approximation, standard for real-time BH visualization; honest time-dependent transport is Phase 18.
+
+### 10.3 Dynamics
+
+TaylorT4 quasi-circular phasing (nonspinning 3.5PN + 1.5PN spin-orbit from catalog χ_eff; coefficients transcribed from Boyle et al. 2007 with citation), separation for visuals from r = (M/ω²)^{1/3} (labeled Newtonian-order mapping). Blend to remnant over ~the final orbit (schematic, labeled); remnant = exact Kerr with published M_f, a_f.
+
+### 10.4 Chirp
+
+h(t) ∝ 𝓜^{5/3} f^{2/3} cos 2φ_orb synthesized from the SAME phase evolution driving the animation (phase-locked by construction), blended into a damped (l,m,n) = (2,2,0) QNM sinusoid. WebAudio buffer; per-event optional frequency shift for audibility (as in LIGO's released audio, labeled). Numerically testable via OfflineAudioContext + FFT against the TaylorT4 sweep.
+
+### 10.5 Data
+
+`src/gwevents.json`: six BBH events (GW150914, GW151226, GW170104, GW170814, GW190412, GW190521) with median source-frame m₁, m₂, χ_eff, M_f, a_f, D_L, date, catalog DOI (GWTC-2.1/3 via the GWOSC event portal; retrieval date recorded; uncertainties omitted, pointed to the DOI). BNS/NSBH excluded (no matter modeling).
+
+### 10.6 UI
+
+Merger mode joins the mode switch; event selector; play/pause/restart; slow-motion factor with true-vs-displayed time readout. **Chirp bar** docked at the bottom: scrolling h(t) waveform with playhead, live f_GW/separation/time-to-merger readouts, volume, frequency-shift toggle — hideable independently AND hidden with the rest of the UI.
+
+### 10.7 Non-goals (documented)
+
+NR merger dynamics; visible GW metric perturbations; kicks; precessing spins (aligned-spin only via χ_eff); accretion disks during merger.
+
+## 11. Head-coupled perspective specification (Phase 22)
+
+Off-axis projection driven by the viewer's tracked head: the monitor stops being a picture and becomes a **window** onto the scene (head-coupled perspective, "fish-tank VR"; Lee 2007). Owner request, 2026-10-07.
+
+### 11.1 Projection
+
+A ray tracer needs no off-axis projection matrix. Each pixel's direction is built at exactly one site per render path, in the observer's local (right, up, forward) frame, before it enters curved spacetime. With the eye displaced by **d** = (d_r, d_u, d_f) metres from its rest position a distance e in front of the screen, and a pixel at physical position (s_x, s_y) relative to the screen centre, the local direction becomes
+
+n ∝ (s_x − d_r, s_y − d_u, e − d_f),
+
+which reduces to the existing symmetric fan when **d** = 0 and tan(fov_y/2) = (H_screen/2)/e. Every render path builds rays separately and must change: plain Kerr, BINARY, WEAK_FIELD (GLSL) and the HQ path (`hq.wgsl`).
+
+### 11.2 Observer
+
+Head motion is a **change of pose of a static observer**, never a velocity: the tetrad e₀ stays the static observer at the displaced position, consistent with item 93 (drag is a static observer). Head speeds are ~10⁻⁹ c, so there is no aberration to model. The displacement maps linearly along the static tetrad's spatial legs, x′ = x + (d_r e₁ + d_u e₂ + d_f e₃)/M_len, and the tetrad is recomputed at x′. Labeled approximation: valid while |**d**| ≪ the local curvature radius √(r³/M); at the framings below it is a few percent.
+
+### 11.3 The scale model — why this is not an exaggeration
+
+Taken at astrophysical scale the effect is invisible: the default scene is a 10 M☉ hole seen from ~270 km, and centimetres of head motion produce no parallax at all. But the renderer is **exactly scale-invariant in M** — Phase 12 verified that changing M by five orders of magnitude changes zero pixels — so nothing in the image fixes the hole's size. Choose the depth D at which the hole sits relative to the glass (D > 0 behind, D < 0 in front); that fixes the length unit
+
+M_len = (e + D) / R_cam,
+
+and the parallax is then *exactly* what that black hole would look like. Worked examples, eye 60 cm from the glass, camera framed so the shadow fits (R_cam ≈ 55 M):
+
+| Placement | M_len | Mass | Horizon diameter |
+|---|---|---|---|
+| 1 m behind the glass | ≈ 2.9 cm | ≈ 6.5 Earth masses | ≈ 11 cm |
+| 30 cm in front of the glass | ≈ 5.5 mm | ≈ 1.2 Earth masses | ≈ 2 cm |
+
+Tidal forces are ignored (the viewer would not survive them); the view is exact. **One control** spans the whole range — "how far behind the glass the hole sits" — and the existing mass readout reports the black hole being viewed. At astronomical D the parallax smoothly vanishes, recovering the literal case.
+
+**Depth is unobservable from one viewpoint.** With the eye centred the image is identical for every D (scale invariance); only head motion reveals depth. This is a testable invariant (§11.6).
+
+### 11.4 What moves, and by how much
+
+For a sideways head displacement δ, an object at depth D shifts on screen by δ·D/(e + D); stars at infinity shift by δ. With e = 60 cm:
+
+| Where it sits | Moves on screen | Relative to the stars |
+|---|---|---|
+| Stars, at infinity | with the head, 100% | reference |
+| Hole 1 m behind | with the head, 62.5% | against the head, 37.5% |
+| On the glass | not at all | against the head, 100% |
+| Hole 30 cm in front | against the head, 100% | against the head, 200% |
+
+Free from the ray tracer, no extra code: lensed star images **re-form** rather than slide (background stars drift into alignment, flare into arcs and rings, break apart), and the disk's near and far sides parallax against each other, giving the hole internal depth.
+
+### 11.5 Constraints
+
+- **Physical field of view is narrower.** A window at normal viewing distance subtends half the current 60° or less; at R_cam = 18 M the shadow (~32°) would fill the screen. This mode auto-frames R_cam so the shadow occupies a set fraction of the window.
+- **Window violation (in front of the glass).** A near object cut off by the screen edge collapses the illusion, because the farther frame appears to occlude it. The disk is wide, so for D < 0 the auto-framing also keeps the disk's outer edge inside the frame with margin. Stars are unaffected.
+- **Ergosphere clamp (in front of the glass).** A hole placed in front of the glass is within reach of the viewer's head. No static observer exists inside the ergosphere — spacetime drags everything there — and the app already refuses a stationary camera inside it. Leaning in is clamped at that existing guard. This is physics, not a code limitation.
+- **Monocular.** With both eyes open, stereopsis reports a flat screen; the effect is strongest with one eye closed. Single viewer.
+
+### 11.6 Tracking, privacy, testing
+
+- **Tracking.** MediaPipe Face Landmarker loaded from jsdelivr **only when enabled** (the app's first runtime download; today it fetches nothing external). Eye midpoint from iris landmarks; distance from apparent iris diameter (≈ 11.7 mm, nearly constant across people). One-Euro smoothing plus short prediction — latency breaks the illusion faster than anything else.
+- **Calibration.** A browser cannot know the screen's physical size or the webcam's field of view: one-time setup with sensible defaults.
+- **Privacy.** Off by default; frames are processed on-device and never transmitted; the UI says so.
+- **Testing.** A test seam injects the eye position (headless has no webcam). Invariants: (1) centred eye ⇒ pixel-identical image for every D (scale invariance, the analogue of the Phase 12 mass check); (2) at astronomical D a star shifts on screen by exactly δ; (3) at D = 0 the hole is pinned while the sky moves; (4) leaning in stops at the ergosphere guard.
+- **Honesty ladder entry.** View exact for the chosen M; scale-model mass is a real black hole; tides ignored; linear eye-displacement map (§11.2); monocular.
+
+---
+
+# Part II: Development Phases
+
+## Phase 0: Repository and Planning
+
+1. [completed] Initialize repository on branch `claude/kerr-black-hole-raytracer-02tz1w` with `.gitignore` (`.env`, `.DS_Store`, `venv/`, `node_modules/`, `dist/`).
+2. [completed] Commit this development plan as `PROJECT_PLAN.md` (specification + task tracker in one document).
+3. [completed] Review this plan with the project owner; obtain explicit confirmation before Phase 1. (Owner directed full execution of the plan to completion, 2026-07-12.)
+
+## Phase 1: Scaffold, Flat-Space Renderer, and Deployment (§3)
+
+4. [completed] Vite + vanilla TypeScript scaffold; GLSL shaders as `?raw` imports; no framework, no engine.
+    - Pre-commit hooks (`ruff`, `ty`, `detect-secrets` with baseline) configured once the Python toolchain exists in Phase 4; `detect-secrets` alone configured here.
+5. [completed] WebGL2 boilerplate: context creation, shader compile/link with error surfacing, fullscreen triangle, `precision highp float` enforced, uniform plumbing.
+6. [completed] Pinhole camera: orbit controls (drag azimuth/elevation, clamped ±89°; scroll zoom clamped to r ∈ [2.2 M, 60 M]), per-pixel flat-space ray directions (§4).
+7. [completed] Procedural starfield (§2.6): cube-map-style cell hashing, sub-cell jitter, power-law brightness, temperature color ramp.
+8. [completed] GitHub Pages deployment via Actions on push (`vite build` → static site). Deliverable: navigable starfield on a live URL. (Workflow committed; Pages must be enabled once in repo Settings → Pages → Source: GitHub Actions.)
+9. [completed] Commit; **checkpoint**: e2e test `e2e/phase1.cjs` PASS (report: `e2e/reports/phase1.md`) — starfield renders, orbit camera responds.
+
+## Phase 2: Derivations (§6 — derive before implementing)
+
+10. [completed] Write `docs/derivations.md` with full step-by-step derivations (LaTeX):
+    - Kerr–Schild metric, inverse metric, and the r-coordinate root solve with degenerate-case guards (z → 0, small ρ) (§2.1).
+    - Null-condition quadratic for p_t and the future-pointing root selection criterion (§2.2). (Result: the two roots give dt/dλ = ∓√D exactly; imaging uses the past-directed root, and all shading observables are ratios invariant under p → −p.)
+    - Hamilton's equations with the finite-difference gradient scheme and its error/step-size trade-off (§2.2). (Result: blueprint's ε = 1e−4·r is roundoff-dominated in f32; shader uses ε = 2e−3·max(r,1).)
+    - Redshift factor g = 1/[u^t (1 − Ω λ)] for a prograde equatorial circular emitter and observer at infinity, including u^t and Ω derivations and sign conventions (§2.5). (Found and corrected the blueprint's u^t: missing numerator (1 + a√M/r^{3/2}), verified numerically.)
+11. [completed] **Checkpoint**: derivations verified numerically (u^t normalization and Ω geodesic condition at M=1, a=0.9, r=4; discriminant positivity proven) and recorded in docs/derivations.md for owner review.
+
+## Phase 3: Kerr Geodesic Integrator in the Shader (§2.1–2.4)
+
+12. [completed] Kerr–Schild metric evaluation in GLSL (r-root with guarded square roots) and Hamiltonian H = ½ g^{μν} p_μ p_ν.
+13. [completed] RK4 integration of Hamilton's equations with finite-difference ∂H/∂x (option (a)); adaptive dλ displacement-bounded heuristic dλ = 0.1 min(r − 0.9 r_H, r)/|dx/dλ|, clamped; fixed max-step loop with early-out (§6).
+14. [completed] Termination logic (§2.3): capture at r < r_+(1 + 0.02√(1−a²)) — buffer scaled so it stays inside the prograde photon orbit near-extremal — plus |p|² > 10⁸ momentum-blowup capture (past-directed shadow rays hug the horizon with exponential blueshift); escape to starfield at r > 200 M; budget-exceeded treated as captured.
+15. [completed] **Debug false-color views built before first full render** (§2.4): step count, |H| drift, final r.
+16. [completed] Spin uniform a/M ∈ [0, 0.998] wired to a provisional slider; shadow asymmetry verified quantitatively (centroid shift 6.8% of width at a = 0.998, 0.2% at a = 0); Einstein ring and lensed stars visible.
+17. [completed] Commit; **checkpoint**: e2e test `e2e/phase3.cjs` PASS (report: `e2e/reports/phase3.md`) — Schwarzschild shadow radius matches the coordinate-camera analytic prediction to 0.13%, |H| drift bounded, frame-dragging asymmetry confirmed.
+
+## Phase 4: Python Validation Suite (§5)
+
+18. [completed] `validation/` as a `uv` project (`uv init`, `uv add numpy matplotlib`, dev tools `ruff`, `ty`, `detect-secrets`); full type annotations; complete pre-commit hook configuration (ruff/ty via uv.lock-pinned local hooks).
+19. [completed] NumPy/float64 mirror of the shader integrator (same Hamiltonian, same RK4, same FD gradients, same adaptive step and termination) in `validation/kerr.py`.
+20. [completed] Produce four validation plots (§5), each with interpretation notes (axes, expected pattern, takeaway):
+    - Convergence order: slope 4.08 above the (annotated) FD-gradient error floor.
+    - Schwarzschild critical impact parameter: |λ_c| = 5.196155 vs 3√3 = 5.196152 M (rel. err. 5×10⁻⁷).
+    - Kerr photon shell at a = 0.9: prograde 1.55787 vs 1.55785 M, retrograde 3.91031 vs 3.91027 M (≈10⁻⁵ both).
+    - Conservation drift: generic flyby ~10⁻⁶ (production step policy), near-critical ray bounded < 2×10⁻⁵ despite e^{2π}-per-orbit error amplification; E conserved identically by construction.
+21. [completed] Test report in `validation/reports/validation.md` (what/why/inputs/runtime; failures and fixes documented). Physics discrepancies found and fixed: past-directed rays flip the sign of λ (positive offsets are retrograde photons) — brackets and comparisons corrected.
+22. [completed] Commit plots and report; **checkpoint**: 8/8 checks PASS; ruff, ruff-format, and ty all clean.
+
+## Phase 5: Relativistic Accretion Disk (§2.5)
+
+23. [completed] Equatorial plane-crossing detection (z sign change) with 3 bisection refinements + linear sub-step interpolation per hit.
+24. [completed] Disk kinematics: Ω(r), r_ISCO(a) (BPT, CPU-side in `src/physics.ts`), corrected u^t; redshift g from conserved E, L_z per the Phase 2 derivation.
+25. [completed] Shading: g⁴ beaming × Novikov–Thorne-ish emissivity (normalized at its 49/36 r_in peak); blackbody color ramp with temperature scaled by g; 3-octave cylindrical value noise in (log r, φ − Ω(r) t) for seamless differential rotation.
+26. [completed] Semi-transparent accumulation: front-to-back compositing, ray continues after each hit (lensed upper/lower disk images and photon-ring structure visible in test renders).
+27. [completed] Commit; **checkpoint**: e2e test `e2e/phase5.cjs` PASS (report: `e2e/reports/phase5.md`) — approaching side (screen left for prograde flow seen from +x) brighter by 2.29× with beaming on vs 1.41× off; ISCO hole shrinks 49 → 31 px from a = 0 to a = 0.998.
+
+## Phase 6: UI, Overlays, and Post-processing (§3, §4)
+
+28. [completed] Custom control panel (dark glass, collapsible sections, live physics-unit readouts): spin, mass-as-scale (display units: r_+ and r_ISCO in km/au for the chosen M☉ — mass is a pure rescale, stated honestly), disk controls with r_in locked to live r_ISCO(a), quality (max steps, resolution scale, bloom), beaming toggle.
+29. [completed] Presets: Schwarzschild (a = 0), Interstellar-ish (a = 0.6), near-extremal (a = 0.998).
+30. [completed] Overlays and diagnostics: ergosphere shell (flat-space schematic march, rim-emphasized) and photon-orbit rings (labeled coordinate-surface markers), r_+ readout, debug-view dropdown; FPS counter; PNG screenshot button.
+31. [completed] RGBA16F render target with resolution scaling; bright-pass + two-pass separable Gaussian bloom at half resolution; ACES tonemap composite (debug views bypass the post pipeline — categorical colors reach the screen exactly).
+32. [completed] Footer + About modal with the core equations and repo link.
+33. [completed] Commit; **checkpoint**: e2e test `e2e/phase6.cjs` PASS (report: `e2e/reports/phase6.md`); phase 1/3/5 tests re-run and re-pass against the HDR pipeline.
+
+## Phase 7: Documentation and Release (§7)
+
+34. [completed] `docs/` folder: derivations (Phase 2 + Phase 8 extensions), numerics.md (integrator choices, step-size heuristic, FD epsilon rationale, termination, f32 policy), rendering.md (disk model, starfield + its magnification artifact, bloom/ACES, overlays, camera model), all cross-referenced from docs/README.md.
+35. [completed] `README.md` (§7): hero render + spin-sweep GIF + live demo link; physics (KS metric, Hamiltonian, KS-over-BL rationale); numerics; the four validation plots each with interpretation; rendering; controls table; ASCII directory tree; documentation index; numbered references (BPT 1972, MTW, Chandrasekhar, James et al. 2015, Thorne 1974).
+36. [completed] In-browser cross-check (§5.5): rendered shadow radius vs conserved-quantity prediction at r₀ = 18 M — 0.13% agreement (e2e/reports/phase3.md); recorded in README with the coordinate-camera caveat.
+37. [completed] Final deploy config + social-preview image (docs/img/hero.png). NOTE: GitHub Pages must be enabled once by the repo owner (Settings → Pages → Source: GitHub Actions) — the workflow builds successfully but the deploy step 404s until then; the social preview image is likewise set manually in Settings.
+
+## Phase 8: Relativistic Camera Dynamics (§9.1, §9.2)
+
+38. [completed] Extend `docs/derivations.md` (§8–9): tetrad construction via Gram–Schmidt under g, arriving-photon initialization p = e_(0) − n^i e_(i) (traced ray q = −p; no quadratic, no root selection), the timelike Hamiltonian branch (H = −½) with the KS at-rest initial condition p_i = f l_i/√(1−f) ≠ 0, release-from-rest ergosphere restriction, cycloid validation target, and the starfield shift g_★ = 1/q_t with its three limit checks.
+39. [completed] Refactor ray initialization to the camera-tetrad form (CPU Gram–Schmidt in `src/tetrad.ts`, tetrad as uniforms; per-ray p_t threaded through the integrator, disk λ = L_z/E corrected to /q_t). Regression *as derived in §8*: pixel-identity with the old camera is the wrong check (different angle conventions); instead the rendered shadow must match the textbook local-frame formula — measured 44.094 px vs 44.091 px predicted (0.006%), where the coordinate camera correctly gave 37.27 px against its own prediction.
+40. [completed] CPU timelike geodesic integrator (`src/geodesic.ts`, f64 mirror of the shader RHS); free-fall Release button (ergosphere-restricted with tooltip; orbit clamp keeps the camera exterior), per-frame worldline update with proper-time substeps, plunge termination and reset at r ≤ 1.05 r_+.
+41. [completed] Redshifted starfield: per-pixel g_★ = 1/q_t applied to star temperature and g_★⁴ brightness, panel toggle; central-pixel q_t verified against √(1−2M/r₀) to 2×10⁻¹⁶; toggle changes 17.6% of pixels at r = 12 M.
+42. [completed] Validation: a = 0 plunge r(τ) vs the analytic Schwarzschild cycloid — max relative error 7×10⁻¹⁰ over 44,711 steps (`validation/plots/freefall_cycloid.png`); suite now 9/9.
+43. [completed] Commit; **checkpoint**: e2e `e2e/phase8.cjs` PASS (report: `e2e/reports/phase8.md`) — free-fall radius monotone 6 → 2.27 M with azimuthal frame-dragging drift 0.018 rad at a = 0.9, reset works; phases 3/5/6 regressions re-pass (phase3 now checks the local-frame formula).
+
+## Phase 9: Disk Extensions — Retrograde Flow and Inclination (§9.3)
+
+44. [completed] Retrograde toggle: orbit-sense parameter s = ±1 threaded through Ω, u^t, r_ISCO; UI toggle with live r_ISCO readout (retrograde ISCO visibly larger — face-on hole 73 px vs 29 px at a = 0.9).
+45. [completed] Disk inclination slider (0–29°): tilted-plane crossing test (sign change of x·n̂) with bisection; redshift via angular momentum about the disk normal at the hit (exact at a = 0); UI note and docs label the a ≠ 0 case a kinematic approximation.
+46. [completed] Validation: retrograde r_ISCO vs BPT (8.71735 vs 8.7174 M) and retrograde photon-orbit radius already in the suite (study 3, err 10⁻⁵); beaming asymmetry flips under s → −s (1.65 → 0.75, with the physically expected weakening from the larger retrograde ISCO); report entry.
+47. [completed] Commit; **checkpoint**: e2e `e2e/phase9.cjs` PASS (report: `e2e/reports/phase9.md`); renders show the star-filled gap between shadow and the receded retrograde inner edge.
+
+## Phase 10: Weak-Field Multi-Mass Mode (§9.4)
+
+48. [completed] Extend `docs/derivations.md` (§10): linearized metric, Hamiltonian specialization, static-metric ray initialization, validity condition |Φ| ≪ 1, capture-radius rationale (regularization of a broken approximation, not a horizon).
+49. [completed] Linearized-metric shader variant via compile-time `#define WEAK_FIELD` (same source, no runtime branching in the hot loop; RK4/FD machinery shared); up to 6 masses via uniform arrays with per-mass 2M_k capture radii.
+50. [completed] UI: mode switch, pointer-draggable masses in the camera plane (orbit suppressed during drag), per-mass M_k sliders, add/remove masses, pairwise-|Φ| validity indicator warning above 0.1, "linearized" labels in panel and docs.
+51. [completed] Validation (float64, study 6): α = 4M/b to 0.28% at b = 10³ M, log–log slope −1.008, small-b residuals following the ~10M/b second-order envelope (the metric's own higher-order deflection); two-mass far-field additivity to 3.3% vs the per-mass 4Mₖ/bₖ sum. Suite 12/12.
+52. [completed] Commit; **checkpoint**: e2e `e2e/phase10.cjs` PASS (report: `e2e/reports/phase10.md`) — capture disks at predicted screen positions with Einstein rings, drag works without orbiting, validity indicator behaves.
+
+## Phase 11: WebGPU Progressive Renderer (§9.5)
+
+53. [completed] WGSL compute port of the integrator (`src/shaders/hq.wgsl`, line-parallel with the GLSL, shared banner sections; full Kerr path incl. tetrad rays, disk sense/tilt, sky shift); adapter probing (navigator.gpu can exist with no adapter — handled) with WebGL2 as default and fallback everywhere.
+54. [completed] Progressive accumulation: Halton(2,3) sub-pixel jitter (deterministic), storage-buffer accumulation, live sample counter; the HQ still is a modal with a frozen camera (progressive accumulation requires it), so "reset on change" is by construction.
+55. [completed] High-quality screenshot mode: full-resolution 256-sample render → PNG download from the modal.
+56. [completed] Parity validation: constant-parity between GLSL and WGSL enforced by test, plus **live numerical pixel parity executed in-container** via the SwiftShader WebGPU adapter (`--enable-unsafe-webgpu --use-webgpu-adapter=swiftshader` on a secure origin): 8×8 block-mean difference 3.56/255 at matched single-sample sampling; the multi-sample brightening was isolated and shown to be the expected linear-space-accumulation effect. Environment quirks (headless mapAsync-after-canvas-configure, adapter GC invalidating map callbacks) handled in the product; details in `e2e/reports/phase11.md`.
+57. [completed] docs/ and README updated for all extended features (controls table, six validation plots, ASCII tree, rendering.md camera/WebGPU sections); deploy config final (Pages enablement remains the one owner-side action).
+58. [completed] Commit; **checkpoint**: e2e `e2e/phase11.cjs` PASS with the full WebGPU runtime path executed (modal, accumulation, download, readback parity) — no skipped checks remain.
+
+## Phase 12: Educational / UX round (owner-requested)
+
+59. [completed] Mass slider clarified: the null result is *physics* (Kerr geometry is scale-free), stated with an in-panel note and a "Why doesn't mass change the image?" popup that also resolves the stronger-lensing-with-mass intuition (α = 4M/b depends on M/b; the camera is anchored in M, so the ratio — and the image — is fixed). Encoded as a falsifiable e2e property: mass 10 → 10⁶ M☉ changes **zero** pixels while the km/au readout changes.
+60. [completed] Free-fall **Stop**: `toggleFreefall()` halts the plunge in place (no reset unless inside R_MIN); the Release button relabels to "Stop free fall" while falling. Defaults changed to resolution 1.00× and bloom 0 per owner request.
+61. [completed] Coordinate-grid overlay (`uGridOn`): equatorial constant-r circles every 2M + twelve 30° spokes, drawn unlensed like the other schematic markers; toggle in the Overlays section; documented in `docs/rendering.md`.
+62. [completed] Click-to-learn: twelve accurate physics popups (ⓘ) on section headers and key rows, plus a **Units & notation** glossary defining every symbol used in the UI (M, a, r, θ, φ, r₊, r_ISCO, Ω, uᵗ, E, L_z, λ, g, g★, Φ, H) and the geometrized-unit convention; About modal cross-references it. Collapsible sidebar (`#panelToggle`).
+63. [completed] Commit; **checkpoint**: e2e `e2e/phase12.cjs` PASS (5/5 — mass pixel-invariance, grid toggle, free-fall stop state machine, glossary-defines-symbols, sidebar collapse); phase6 panel regression re-passes. Report: `e2e/reports/phase12.md`.
+64. [completed] Animation/realism round: cinematic idle auto-orbit (0.003125 rad/s azimuthal drift, ~34 min/rev, after 4 s of stillness; capture-phase interaction listeners reset it; Camera-section toggle; disabled under `__bhTest`). Visible Keplerian shear via `DISK_TIME_SCALE = 2` playback remap of the texture phase only (g and g⁴ unchanged — a pure fast-forward; `__bhDiskTime` seam freezes it for measurement). Star footprint halved (`STAR_SIZE = 0.5`) toward point sources with 1/STAR_SIZE² flux-conserving brightness. Default resolution 1.00× / bloom 0; `__bhTest` renders at 0.75 to keep the software-WebGL2 e2e responsive.
+65. [completed] Notation/physics: mass popup now answers "shouldn't mass affect lensing/the disk/background" — α = 4M/b holds M/b fixed under an M-anchored camera; the one real M-dependence is disk color temperature T ∝ M^(−1/4) (deliberately not rendered); the starfield is a direction field at infinity (scale-free).
+66. [completed] Test hardening (root-cause, not threshold nudges): phase 9 beaming measured disk-only (on−off cancels the frozen starfield; flip sharpened to 4.47/0.56); phase 10 validity polls the indicator instead of racing a fixed wait; phase 9 pins resolution 0.75; full 9-suite sweep re-certified PASS. Report updated: `e2e/reports/phase12.md`.
+67. [completed] Standards audit against the global context: refreshed the stale `e2e/reports/phase9.md` (disk-only beaming) and `phase10.md` (polling validity) to match the reworked tests; added two documentation pages closing the code-coverage gap — `docs/architecture.md` (software structure, one-algorithm/three-expressions parity strategy, render-pipeline data flow, module map, testing harness) and `docs/validation.md` (two-tier verification philosophy, float64-mirror rationale) — wired into both the `docs/README.md` hub and the root README index and tree. Toolchain re-checked: ruff, ruff-format, ty all pass with `error-on-warning`.
+68. [completed] Physical moving-observer camera: the interactive orbit is now a genuine observer worldline. Its coordinate 3-velocity v = dx/dt is finite-differenced (EMA-smoothed, teleport-guarded), and the tetrad e₀ is set from u = uᵗ(1, v) with uᵗ = 1/√(1 − |v|² − f(1 + l·v)²) (`movingObserver` in `tetrad.ts`; derivations.md §8) — so dragging shows real aberration and Doppler and reduces to the static observer exactly at rest. A free drag is superluminal in coordinate units, so v is clamped to the local light cone (max Lorentz factor 10). New phase-8 check verifies v = 0 ≡ static to 10⁻¹² and opposite toward/away Doppler shifts (q_t 0.673 / 1.360 about the static 0.943); full 9-suite sweep re-certified PASS. Docs updated (derivations §8, rendering camera model, Camera learn popup).
+69. [completed] Fix: the first moving-observer cut was verified only at the physics level and shipped broken — a hand-drag's raw finite-difference velocity is superluminal in coordinate units (~1.6 c), so it clamped to 0.995 c and strobed on/off between frames (pointer input is not frame-synced), making the camera lurch. Fixed by computing the velocity **only while actively dragging** (`camera.isManipulating`), EMA-smoothing it (removes the strobe), and mapping its magnitude through a sub-luminal saturating curve `V_max·tanh(|v|/V_ref)`, `V_max = 0.5 c` (bounded, graded aberration; the `movingObserver` B-floor is now only a backstop). A still camera is exactly static, so pixel suites are unaffected. New phase-12 check 5b drives a **real pointer drag** and asserts the mapped speed (`__bh.camSpeed()`) is 0 at rest, bounded and non-strobing during the drag, and 0 after release — the interactive path the physics-only test had missed. Docs corrected (derivations §8, rendering, Camera popup).
+70. [completed] Fix (round 2, per-frame diagnosis): the round-1 fix passed a batch-sampled drag test but per-frame tracing showed it still broken — binary saturation (V_ref = 1 M/s sat an order of magnitude below real drag speeds of 3–20 M/s, so any touch pegged the 0.5 c cap ≈ 29° aberration), one-frame snaps at gesture start/release (max frame-to-frame jump 0.494 c), a sawtooth at the pointer cadence, the teleport guard firing on legitimately-batched drag steps mid-gesture, and silent velocity death when the frame period exceeded the window. Final estimator: 0.32 s sliding-window derivative with straddling-sample eviction, time-constant EMA (τ = 0.15 s, k = 1 − exp(−dt/τ)), gesture gating with 0.6 s post-input grace (decays through the coast; teleport guard only outside live gestures), map V_max·tanh(|v|/V_ref) with V_max = 0.25 c, V_ref = 10 M/s. Measured: max frame jump 0.024–0.031 c (18× smoother), graded speeds, still frame pixel-identical. phase-12 check 5b rebuilt: wall-clock-paced real pointer drag asserting the smoothness invariant (max frame jump < 0.15 c), boundedness, and decay. Full 9-suite sweep PASS. Docs updated (derivations §8 four-stage estimator, rendering.md, report).
+
+## Phase 13: Merger Mode — Derivations, Data, Validation Core (§10)
+
+71. [completed] Derivations first (project pattern): `docs/derivations.md` §11 superposed boosted Kerr–Schild metric and the exact two-step Sherman–Morrison inverse (with the single-hole-limit and denominator-guard analysis); §12 TaylorT4 PN phasing (nonspinning 3.5PN + 1.5PN spin-orbit via χ_eff, coefficients cited to Boyle et al. 2007), chirp mass, leading-order chirp time, Newtonian-order separation mapping, and the slow-motion/true-rate time-mapping design with the temporal-aliasing argument; §13 remnant (published M_f, a_f) and (2,2,0) QNM frequency/quality fits (Berti–Cardoso–Will). References extended.
+72. [completed] Curated event catalog `src/gwevents.json`: six BBH events with median source-frame m₁, m₂, χ_eff, M_f, a_f, D_L, date, per-event f_low and audio-shift default, catalog DOI; retrieval provenance noted in the file header and docs. Owner spot-check of the table against the GWOSC event portal is part of the checkpoint.
+73. [completed] Validation modules: `validation/pn.py` (TaylorT4 driver; checks: leading-order chirp-time formula agreement at low frequency, PN-order convergence of accumulated phase, GW150914 time-from-35-Hz ≈ 0.2 s, QNM fit values vs published GW150914 ringdown ≈ 250 Hz) and `validation/superposed.py` (superposed-KS metric + Sherman–Morrison inverse; checks: g·g⁻¹ = 1 to machine precision, single-hole limit vs `kerr.py` as M₂ → 0, far-field two-hole deflection additivity vs the weak-field mode). New studies + plots wired into `run_validation.py` and the report.
+74. [completed] Commit; **checkpoint**: derivations §11–13 and the validation results presented to the owner for review before any shader work (Phase 14 gate).
+
+## Phase 14: Merger Mode — BINARY Shader Variant (§10.2)
+
+75. [completed] `#define BINARY` shader variant: superposed boosted-KS metric terms + Sherman–Morrison inverse in GLSL; static two-hole scene (fixed separation) rendering with two shadows and inter-hole lensing; uniforms for per-hole mass/spin/position/velocity.
+76. [completed] e2e `phase13.cjs` (naming continues the suite numbering): single-hole-limit pixel parity vs Kerr mode (M₂ = 0 → identical frames), two-hole scene renders with two capture regions at predicted screen positions, far-separation consistency vs the weak-field mode; report.
+77. [completed] Commit; **checkpoint**: static binary renders reviewed (owner approved, 2026-07-20: "keep going").
+
+## Phase 15: Merger Mode — Dynamics (§10.3)
+
+78. [completed] TS PN driver mirroring `pn.py` (TaylorT4 ODE, blend-to-remnant schedule, remnant swap to exact Kerr with published M_f/a_f); animation timeline with slow-motion factor and true-vs-displayed time readout; event selector UI from `gwevents.json`; play/pause/restart.
+79. [completed] e2e `phase14.cjs`: separation shrinks monotonically, orbital frequency rises, merger completes to a single shadow with the remnant's r_+, timeline controls work; report.
+80. [completed] Commit; **checkpoint**: full inspiral-to-ringdown animation reviewed (owner approved via /goal to complete Phases 16-18).
+
+## Phase 16: Merger Mode — Chirp Audio and Waveform Strip (§10.4, §10.6)
+
+81. [completed] WebAudio chirp synthesized from the same φ(t) (inspiral → C¹ blend → damped QNM), true-rate playback aligned to complete at the visual merger; per-event frequency-shift toggle (labeled); volume control.
+82. [completed] Chirp bar: scrolling h(t) canvas with playhead, live f_GW/separation/time-to-merger readouts; **hideable independently and with the master UI toggle**.
+83. [completed] e2e `phase15.cjs`: sliding-DFT frequency-sweep check on the synthesized buffer (OfflineAudioContext superseded — the buffer is generated analytically, so its samples are FFT'd directly) → FFT → chirp f(t) matches the TaylorT4 sweep within tolerance; waveform canvas draws; both hide paths work; report.
+84. [completed] Commit; **checkpoint**: chirp + animation reviewed together (implementation + certification complete). Committed f25b0b1.
+
+## Phase 17: Merger Mode — Polish, Docs, Release (§10)
+
+85. [completed] Cinematic per-event presets (3/4 framing with per-event pull-back scaled to the initial separation); README merger section with animation GIF (`docs/img/merger.gif`); "What's physical and what isn't" entries for every approximation in the §10.1 ladder (superposed KS, frozen-metric transport, PN truncation, schematic blend, audio shift); learn-more popups (honesty ladder enriched in `LEARN.binary`).
+86. [completed] Full 12-suite certification sweep + validation suite; deploy; report (`e2e/reports/phase17.md`).
+87. [completed] Commit; **checkpoint**: release review; Phase 18 committed via `/goal complete phases 16 to 18` (owner directive).
+
+## Phase 18: Time-Dependent Ray Transport (§10, committed via /goal)
+
+88. [completed] Integrate (t, p_t) along rays with a 4th (temporal) FD gradient (retarded-metric transport: holes ride uniform-velocity worldlines c(t)=c₀+v·t replacing the frozen-metric snapshot); frozen-vs-retarded comparison toggle in the Merger panel; `RETARDED` shader variant; derivations §14; validation of the static limit + retardation-grows-with-speed (`e2e/reports/phase16.md`, suite #16). Report.
+
+## Phase 19: Merger Presentation Overhaul (owner request, 2026-07-22)
+
+Owner directive: make the merger read like the iconic SXS/LIGO GW150914 visualization ("too hard to see now"); remove all sound; replace the synthesized waveform strip with the REAL detection data.
+
+89. [completed] **Readable lensed Milky-Way backdrop.** Procedural (zero-asset) enhancement gated to merger mode via `uSkyRich`: a denser but dimmer starfield plus a warm galactic band + dust (3D value-noise fbm), so the two shadows and the lensed arcs read against a full sky. Camera reframed closer (radius ~1.15·sep+4, clamped [13,26]) so the two shadows are large and distinct. Disk-mode sky unchanged (uSkyRich=0).
+90. [completed] **Sound removed.** Deleted the WebAudio context/buffer/scheduling and the `synthesizeAudio`/`interpX`/`fGwAt` driver methods and the volume/pitch UI — the animation is silent.
+91. [completed] **Real-data chirp strip.** Embedded the actual GW150914 H1 observed strain (whitened + band-passed 35–350 Hz) with the released NR reconstruction overlaid (`src/gw150914_chirp.json`, GWOSC DOI 10.7935/K5MW2F23), plotted amplitude-vs-time with a playhead mapped to the visual merger. Shown for GW150914 (the reference detection); other events animate silently. e2e `phase15.cjs` rewritten: real data present, chirps (rising zero-crossing rate), strip draws, other-event hidden, no audio hook, hide paths. Docs (README, derivations §12, LEARN.binary) updated.
+92. [completed] **Merger camera: autonomous drift + sky scintillation fixed.** Owner report ("camera movement is weird, was better before") diagnosed empirically with a 2×2 (old/new radius × sparse/rich sky): the camera code was unchanged; the cinematic idle auto-orbit (always on) had been invisible against the old sparse sky but the new dense backdrop is drawn from sub-pixel stars, so 0.7° of drift changed 51–76% of pixels and the sky visibly crawled on its own. Fixes: idle drift disabled in merger mode (verified live: kerr drift still 0.00313 rad/7 s, merger drift exactly 0); rich-sky star footprint widened to ~1 px (flux-conserved) — 40 px drag scintillation 0.79 → 0.426. phase12 + 13–16 green.
+93. [completed] **Interactive drag is now a static observer (drag aberration removed).** Owner report: the hole "shifts off center when I drag." Diagnosed: not a geodesic constraint — it was the physical moving-observer camera (items 68–69): the drag velocity aberrated the view, sliding the shadow off-center during every drag (measured: centroid shifts with mapped speed and returns on release; headless is a lower bound, real hardware reaches the ~14° cap). Removed at the owner's direction: the interactive orbit's tetrad e₀ is now the static observer, so the hole stays centered under the cursor; the drag→velocity estimator and its constants are deleted. `movingObserver` remains for the phase-8 physics diagnostic (v = 0 ≡ static) and free fall keeps its own geodesic velocity/aberration. phase12 check 5b rewritten to assert the new contract (mapped speed exactly 0 throughout a real drag, and the mid-drag frame pixel-identical to a static render at the same camera pose — dragging changes the pose, never the observer). Docs (rendering camera model, Camera popup) updated.
+
+
+## Phase 20: Shader Performance Optimisation (agent-evolve, 2026-09)
+
+Four-round evolutionary search (explorer/reviewer protocol, isolated worktrees) over `render.frag.glsl`. Full narrative, measurement protocol and the 16-item negative-result ledger: `docs/optimization-run.md`, `docs/optimization-ledger.md`.
+
+94. [completed] **Eval harness** (`bench/bench.cjs`): frame time on a fixed Kerr scene under headless SwiftShader (a relative proxy for shader cost — no GPU) plus a pixel-parity gate over four deterministic scenes against committed references. Cross-session timings proved invalid (the anchor drifted 291.9 → 343.4 ms between sessions); every result uses **interleaved same-conditions remeasurement**.
+95. [completed] **Winner applied** — benchmark frame 341.6 → 67.6 ms (−80.2%) at parity 0.99965. Four changes: per-ray loop-level closed-form vs finite-difference force selection; far-field step ceiling 4.0 → 0.1·R_ESCAPE; disk hits by Fritsch–Carlson-limited cubic Hermite interpolation instead of four RK4 sub-steps; disk shading hoisted out of the march into a post-loop replay. Three of the four concern what is compiled into the loop body, not arithmetic.
+96. [completed] **Covariant-energy sign bug fixed** in the ray classifier (`E = −p_t`, not `p_t`): R(r) is invariant only under flipping E and L_z together, so the classifier evaluated the potential for spin −a, misrouting 159 rays/frame at a = 0.998. Zero misroutes over ~26 000 sampled rays per scene after the fix.
+97. [completed] **phase13 single-hole-limit regression fixed** (introduced in round 2). BINARY march step ceiling matched to the plain-Kerr rule (merger frame 432.6 → 350.7 ms, −19%; marginally closer to a converged render); the comparison now runs from r_cam = 4 M, inside R_FD_KERR, where both modes share one discretisation — asserted at **zero** tolerance, plus check 1b bounding the specialisation from 30 M. A runtime uniform to force the generic force was rejected on measurement (10–18% frame cost). `bench/reference/scene-4.png` regenerated; scenes 1–3 keep the anchor's references.
+98. [completed] Docs cross-referenced from `docs/README.md`. Full e2e suite green (phases 1, 3, 5, 6, 8–16).
+
+## Phase 21: Renderer Consistency, Coverage, and Cleanup
+
+Closes the gaps Phase 20 exposed. Ordered by dependency: item 100 is a prerequisite, because items 101–103 modify render paths the benchmark does not currently draw.
+
+99. [pending] **Phase 20 test report** `e2e/reports/phase20.md`, keeping the one-report-per-phase convention.
+100. [pending] **Benchmark coverage.** Two of the four compiled variants are never rendered: add a multi-mass scene (`WEAK_FIELD`) and a retarded-transport scene (`BINARY+RETARDED`) with committed references; correct the harness header, which claims full coverage; confirm determinism with `--selftest`.
+101. [pending] **Converge the WebGPU HQ path.** `hq.wgsl` still runs the anchor algorithm end to end (step cap 4.0, three-bisection disk crossing with the 1e-12 guard, no classifier or closed-form force). Port in order, measuring after each: step ceiling; Hermite crossing; then classifier + analytic force if the first two behave. Strengthen `e2e/phase11.cjs`: its constant list matches the substring `"0.1 * min(r - 0.9"`, which survives a changed ceiling — compare the full step expression including bounds, so constant drift is caught structurally.
+102. [pending] **Weak-field step ceiling.** The rule is `clamp(0.08·max(wfNearest(x), 0.05)/|v|, 1e-4, 6.0)`: scaled by distance to the *nearest* mass, but with several masses the far-field scale is the distance to the *system*. Derive the ceiling against that; verify with item 100's scene.
+103. [pending] **Far-field asymptotic handoff (optional).** Open, not dead: a reviewer overturned the claim that killed it. Mass tail dΘ/dr = 3Mb³/r⁵ derived and confirmed to ~1%; spin term falls at the same 1/r⁴ rate. Estimated ~11 of 74 steps/ray. Needs a handoff radius from a stated error budget, spin handled explicitly, off-bench validation with controls. Caveat: the starfield's cube-cell discontinuity makes any non-exact change to escaping rays a ~0.1%-of-pixels event.
+104. [pending] **Cleanup.** Delete the 12 `evolve/1/candidate-*` branches (winner applied; history in docs); fold `evolve-state/1/notes/` into `docs/` or keep `evolve-state/` as a local archive (git-ignored, 1.3 MB); confirm no stray worktrees; re-run the full e2e suite + benchmark and record final numbers in the Phase 21 report. Owner action: the machine's global git identity is still Claude.
+
+## Phase 22: Head-Coupled Perspective (§11)
+
+Owner request, 2026-10-07. Prototype first, with a go/no-go before any webcam work. Item 107's HQ path depends on item 101; the rest does not depend on Phase 21.
+
+105. [pending] **Mouse-driven prototype.** Eye position from the mouse; off-axis projection (§11.1) in the plain-Kerr path; static-observer eye displacement (§11.2); the depth control and scale-model mass readout (§11.3); physical-FOV auto-framing (§11.5). **Checkpoint:** owner judges the effect before tracking work starts.
+106. [pending] **Constraints.** Window-violation framing for D < 0; ergosphere clamp at the existing static-observer guard (§11.5).
+107. [pending] **All render paths.** BINARY and WEAK_FIELD (GLSL); WGSL HQ after item 101.
+108. [pending] **Webcam tracking.** MediaPipe Face Landmarker, opt-in and off by default, on-device notice; iris-size distance; One-Euro smoothing + prediction; one-time calibration with defaults (§11.6).
+109. [pending] **Verification.** Eye-position test seam; the four invariants of §11.6; full e2e suite; report `e2e/reports/phase22.md`.
+110. [pending] **Docs.** Derivation of the off-axis map and the scale model (`docs/derivations.md`); honesty-ladder entry; learn-more popup; README section.
