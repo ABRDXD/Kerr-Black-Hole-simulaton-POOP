@@ -47,3 +47,5 @@ requestAnimationFrame(() => {
     requestAnimationFrame(() => { if (!failed) status.remove(); });
   }).catch(showFailure);
 });
+
+// refactor: polish boot.ts implementation details
