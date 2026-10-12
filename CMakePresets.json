@@ -1,0 +1,167 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "windows-clang-debug",
+      "displayName": "Windows clang (Debug, local bootstrap toolchain)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/windows-clang-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "${sourceDir}/.tools/llvm-mingw/bin/clang++.exe",
+        "CMAKE_MAKE_PROGRAM": "${sourceDir}/.tools/ninja/ninja.exe",
+        "KERR_BUILD_RENDERER": "OFF",
+        "KERR_BUILD_TESTS": "ON",
+        "KERR_WARNINGS_AS_ERRORS": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "linux-gcc-debug",
+      "displayName": "Linux GCC (Debug)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/linux-gcc-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "g++",
+        "KERR_BUILD_RENDERER": "OFF",
+        "KERR_BUILD_VULKAN": "OFF",
+        "KERR_ENABLE_SANITIZERS": "OFF",
+        "KERR_BUILD_TESTS": "ON",
+        "KERR_WARNINGS_AS_ERRORS": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-gcc-release",
+      "displayName": "Linux GCC (Release)",
+      "inherits": "linux-gcc-debug",
+      "binaryDir": "${sourceDir}/out/build/linux-gcc-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "linux-gcc-sanitize",
+      "displayName": "Linux GCC (Debug, ASan + UBSan)",
+      "inherits": "linux-gcc-debug",
+      "binaryDir": "${sourceDir}/out/build/linux-gcc-sanitize",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "KERR_ENABLE_SANITIZERS": "ON"
+      }
+    },
+    {
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      },
+      "inherits": "windows-clang-debug",
+      "name": "windows-clang-release",
+      "binaryDir": "${sourceDir}/out/build/windows-clang-release",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "displayName": "Windows clang (Release)"
+    },
+    {
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "KERR_ENABLE_SANITIZERS": "ON"
+      },
+      "inherits": "windows-clang-debug",
+      "name": "windows-clang-sanitize",
+      "binaryDir": "${sourceDir}/out/build/windows-clang-sanitize",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "displayName": "Windows clang (Debug, ASan + UBSan)"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-clang-debug",
+      "configurePreset": "windows-clang-debug"
+    },
+    {
+      "name": "linux-gcc-debug",
+      "configurePreset": "linux-gcc-debug"
+    },
+    {
+      "name": "linux-gcc-release",
+      "configurePreset": "linux-gcc-release"
+    },
+    {
+      "name": "linux-gcc-sanitize",
+      "configurePreset": "linux-gcc-sanitize"
+    },
+    {
+      "configurePreset": "windows-clang-release",
+      "name": "windows-clang-release"
+    },
+    {
+      "configurePreset": "windows-clang-sanitize",
+      "name": "windows-clang-sanitize"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-clang-debug",
+      "configurePreset": "windows-clang-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-gcc-debug",
+      "configurePreset": "linux-gcc-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-gcc-release",
+      "configurePreset": "linux-gcc-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-gcc-sanitize",
+      "configurePreset": "linux-gcc-sanitize",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "output": {
+        "outputOnFailure": true
+      },
+      "name": "windows-clang-release",
+      "configurePreset": "windows-clang-release"
+    },
+    {
+      "output": {
+        "outputOnFailure": true
+      },
+      "name": "windows-clang-sanitize",
+      "configurePreset": "windows-clang-sanitize"
+    }
+  ]
+}
