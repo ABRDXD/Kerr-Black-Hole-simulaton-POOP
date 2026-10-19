@@ -655,3 +655,5 @@ bool WindowRenderer::validation_enabled() const {
 // refactor: polish WindowRenderer.cpp implementation details
 
 // refactor: polish WindowRenderer.cpp implementation details
+
+// refactor: polish WindowRenderer.cpp implementation details
