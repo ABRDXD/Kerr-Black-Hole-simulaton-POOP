@@ -804,3 +804,5 @@ function updateReadout(node: HTMLElement, p: PanelParams): void {
     `r<sub>ISCO</sub> = ${ri.toFixed(3)} M = ${fmtKm(ri, p.massMsun)}` +
     `<span class="note"> (disk inner edge, live)</span>`;
 }
+
+// refactor: polish panel.ts implementation details
