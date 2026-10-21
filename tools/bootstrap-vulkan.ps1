@@ -65,9 +65,3 @@ if ($Validation) {
     # Only extract local tools. Never execute the SDK installer or change registry/system PATH.
 }
 Write-Output 'Pinned dependencies ready. Run .\build.ps1 -Configuration Release -Vulkan (or -Window for presentation)'
-
-// refactor: polish bootstrap-vulkan.ps1 implementation details
-
-// refactor: polish bootstrap-vulkan.ps1 implementation details
-
-// refactor: polish bootstrap-vulkan.ps1 implementation details

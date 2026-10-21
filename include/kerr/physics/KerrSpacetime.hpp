@@ -94,5 +94,3 @@ struct HorizonRadii final {
 
 } // namespace kerr::physics
 
-
-// Frame-dragging frequency omega

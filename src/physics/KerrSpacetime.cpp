@@ -251,29 +251,3 @@ math::Vector4d raise_index(const math::Matrix4d& inverse_metric,
 }
 
 } // namespace kerr::physics
-
-// Horizon radius computation
-
-// Ergosphere boundary calculation
-
-// Metric determinant check
-
-// refactor: polish KerrSpacetime.cpp implementation details
-
-// refactor: polish KerrSpacetime.cpp implementation details
-
-// refactor: polish KerrSpacetime.cpp implementation details
-
-// refactor: polish KerrSpacetime.cpp implementation details
-
-// refactor: polish KerrSpacetime.cpp implementation details
-
-// refactor: polish KerrSpacetime.cpp implementation details
-
-// refactor: polish KerrSpacetime.cpp implementation details
-
-// refactor: polish KerrSpacetime.cpp implementation details
-
-// refactor: polish KerrSpacetime.cpp implementation details
-
-// refactor: polish KerrSpacetime.cpp implementation details

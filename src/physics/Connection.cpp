@@ -43,5 +43,3 @@ GeometryStatus contract_connection(const MetricEvaluation &metric,
 }
 
 } // namespace kerr::physics
-
-// Non-zero symmetric Christoffel components

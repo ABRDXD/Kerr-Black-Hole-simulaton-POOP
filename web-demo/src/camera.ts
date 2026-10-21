@@ -149,7 +149,3 @@ export class OrbitCamera {
 function clamp(x: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, x));
 }
-
-// refactor: polish camera.ts implementation details
-
-// refactor: polish camera.ts implementation details

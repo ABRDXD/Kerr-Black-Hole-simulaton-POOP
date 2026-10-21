@@ -1261,5 +1261,3 @@ window.__bh = {
     }),
   },
 };
-
-// refactor: polish main.ts implementation details

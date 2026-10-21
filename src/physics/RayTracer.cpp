@@ -254,31 +254,3 @@ WorldlineResult trace_timelike_worldline(const KerrParameters &parameters,
 }
 
 } // namespace kerr::physics
-
-// Doppler factor computation
-
-// Gravitational redshift and beaming
-
-// refactor: polish RayTracer.cpp implementation details
-
-// refactor: polish RayTracer.cpp implementation details
-
-// refactor: polish RayTracer.cpp implementation details
-
-// refactor: polish RayTracer.cpp implementation details
-
-// refactor: polish RayTracer.cpp implementation details
-
-// refactor: polish RayTracer.cpp implementation details
-
-// refactor: polish RayTracer.cpp implementation details
-
-// refactor: polish RayTracer.cpp implementation details
-
-// refactor: polish RayTracer.cpp implementation details
-
-// refactor: polish RayTracer.cpp implementation details
-
-// refactor: polish RayTracer.cpp implementation details
-
-// refactor: polish RayTracer.cpp implementation details
