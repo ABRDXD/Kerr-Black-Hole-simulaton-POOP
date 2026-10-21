@@ -24,15 +24,3 @@ using Vector4d = Vector4<double>;
 
 } // namespace kerr::math
 
-
-// SIMD-aligned vector dot product
-
-// refactor: polish Vector.hpp implementation details
-
-// refactor: polish Vector.hpp implementation details
-
-// refactor: polish Vector.hpp implementation details
-
-// refactor: polish Vector.hpp implementation details
-
-// refactor: polish Vector.hpp implementation details

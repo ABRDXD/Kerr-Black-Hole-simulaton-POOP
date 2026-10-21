@@ -78,5 +78,3 @@ if [[ -x $root/.tools/node-linux/bin/node ]]; then ok 'Bundled development Node 
 printf 'Result: '
 if ((problem)); then printf 'address the FIX items before launching.\n'; else printf 'basic prerequisites passed; a real desktop render is still required to verify GPU performance.\n'; fi
 exit "$problem"
-
-// refactor: polish doctor-arch.sh implementation details

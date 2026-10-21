@@ -368,13 +368,3 @@ FrequencyEvaluation measured_frequency(const KerrParameters &parameters,
 }
 
 } // namespace kerr::physics
-
-// refactor: polish Observer.cpp implementation details
-
-// refactor: polish Observer.cpp implementation details
-
-// refactor: polish Observer.cpp implementation details
-
-// refactor: polish Observer.cpp implementation details
-
-// refactor: polish Observer.cpp implementation details

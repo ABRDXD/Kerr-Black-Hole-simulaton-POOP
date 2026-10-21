@@ -25,9 +25,3 @@ export function photonOrbitRadius(a: number, sense: 1 | -1): number {
 export function ergosphereRadius(a: number, cosTheta: number): number {
   return 1 + Math.sqrt(Math.max(1 - a * a * cosTheta * cosTheta, 0));
 }
-
-// refactor: polish physics.ts implementation details
-
-// refactor: polish physics.ts implementation details
-
-// refactor: polish physics.ts implementation details

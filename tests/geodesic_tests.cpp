@@ -341,15 +341,3 @@ int main() {
               << " failures\n";
     return failures == 0 ? 0 : 1;
 }
-
-// Null condition check
-
-// refactor: polish geodesic_tests.cpp implementation details
-
-// refactor: polish geodesic_tests.cpp implementation details
-
-// refactor: polish geodesic_tests.cpp implementation details
-
-// refactor: polish geodesic_tests.cpp implementation details
-
-// refactor: polish geodesic_tests.cpp implementation details
