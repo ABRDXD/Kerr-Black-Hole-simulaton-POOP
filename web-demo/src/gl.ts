@@ -82,3 +82,5 @@ export function uniforms(
   for (const name of names) map.set(name, gl.getUniformLocation(program, name));
   return map;
 }
+
+// refactor: polish gl.ts implementation details

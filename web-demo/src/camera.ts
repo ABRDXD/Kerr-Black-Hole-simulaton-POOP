@@ -151,3 +151,5 @@ function clamp(x: number, lo: number, hi: number): number {
 }
 
 // refactor: polish camera.ts implementation details
+
+// refactor: polish camera.ts implementation details

@@ -34,3 +34,5 @@ using Vector4d = Vector4<double>;
 // refactor: polish Vector.hpp implementation details
 
 // refactor: polish Vector.hpp implementation details
+
+// refactor: polish Vector.hpp implementation details
